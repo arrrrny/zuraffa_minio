@@ -2,6 +2,7 @@
 name: zuraffa_minio
 description: "Zuraffa-native MinIO / S3-compatible client — SigV4 signing, bucket/object operations, usecases, auto-DI."
 version: 0.1.0
+repository: https://github.com/arrrrny/zuraffa_minio
 publish_to: https://pub.zuzu.dev
 
 environment:
