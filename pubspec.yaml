@@ -1,7 +1,7 @@
 # Zuraffa-native package created by `zfa package create` (spec 025).
 name: zuraffa_minio
 description: "Zuraffa-native MinIO / S3-compatible client — SigV4 signing, bucket/object operations, usecases, auto-DI."
-version: 0.1.0
+version: 0.1.1
 repository: https://github.com/arrrrny/zuraffa_minio
 publish_to: https://pub.zuzu.dev
 
@@ -14,7 +14,7 @@ dependencies:
   # abandoned minio package (xml ^6.4.2); narrows to ^7.0.1 once zuraffa
   # switches to zuraffa_minio / drops minio.
   xml: '>=6.6.1 <8.0.0'
-  zuraffa: ^6.3.0
+  zuraffa: ^7.0.0
 
 dev_dependencies:
   test: ^1.25.0

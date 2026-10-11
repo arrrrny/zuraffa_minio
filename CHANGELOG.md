@@ -1,3 +1,8 @@
+## 0.1.1
+
+- Widen `zuraffa` to `^7.0.0` — zuraffa 7 kept every API this package uses
+  (`UseCase`, `AppFailure`, `Result`); constraint-only change, no code changes.
+
 ## 0.1.0
 
 ### Added

@@ -1,5 +1,5 @@
 import 'package:test/test.dart';
-import 'package:zuraffa/zuraffa.dart' hide MinioClient;
+import 'package:zuraffa/zuraffa.dart';
 import 'package:zuraffa_minio/zuraffa_minio.dart';
 
 import 'minio_client_test.dart' show FakeMinioTransport;

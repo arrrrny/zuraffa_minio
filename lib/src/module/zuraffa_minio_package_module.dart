@@ -1,7 +1,7 @@
 // Hide zuraffa's own MinioClient (its wrapper over the abandoned
 // minio package) so this package's client is unambiguous during the
 // transition; the hide can go once zuraffa drops minio.
-import 'package:zuraffa/zuraffa.dart' hide MinioClient;
+import 'package:zuraffa/zuraffa.dart';
 
 import '../di/zuraffa_minio_package_registrar.dart';
 
