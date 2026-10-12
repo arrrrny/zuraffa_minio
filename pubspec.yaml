@@ -10,15 +10,12 @@ environment:
 
 dependencies:
   crypto: ^3.0.7
-  # Window keeps this package consumable while zuraffa still depends on the
-  # abandoned minio package (xml ^6.4.2); narrows to ^7.0.1 once zuraffa
-  # switches to zuraffa_minio / drops minio.
+  # ListObjectsV2 XML parsing (specs/001-zuraffa-minio FR-3). The window keeps
+  # this package resolvable for consumers still on Dart 3.11/3.12: xml 7.1.0
+  # requires Dart ^3.13.0, so narrowing to ^7.1.0 would silently raise this
+  # package's effective SDK floor above the ^3.11.0 declared below.
   xml: '>=6.6.1 <8.0.0'
   zuraffa: ^7.0.0
 
 dev_dependencies:
-  test: ^1.25.0
-
-# Dev-only resolution aids (pub strips dependency_overrides on publish).
-dependency_overrides:
-  xml: 7.0.1
+  test: ^1.33.0
