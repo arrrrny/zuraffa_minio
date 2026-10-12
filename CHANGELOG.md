@@ -2,6 +2,11 @@
 
 - Widen `zuraffa` to `^7.0.0` — zuraffa 7 kept every API this package uses
   (`UseCase`, `AppFailure`, `Result`); constraint-only change, no code changes.
+- Publish to pub.dev. The package previously declared `publish_to:
+  https://pub.zuzu.dev`, a development mirror that is no longer used.
+- Drop the dev-only `dependency_overrides` pin on `xml` and keep the
+  `>=6.6.1 <8.0.0` window, so consumers still on Dart 3.11/3.12 stay
+  resolvable (`xml` 7.1.0 requires Dart `^3.13.0`). `test` bumped to `^1.33.0`.
 
 ## 0.1.0
 
