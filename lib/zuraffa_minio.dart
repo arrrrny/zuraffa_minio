@@ -15,7 +15,11 @@
 /// // or
 /// import 'package:zuraffa_minio/zuraffa_minio.dart';
 /// ```
+///
+/// The S3 models keep their own library, `package:zuraffa_minio/models.dart`,
+/// exactly as they did upstream. They are not exported from here on purpose:
+/// one of them is called `Object`, and an export would shadow `dart:core`'s
+/// `Object` in every file that imports this library.
 library;
 
 export 'minio.dart';
-export 'models.dart';

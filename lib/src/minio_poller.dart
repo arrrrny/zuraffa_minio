@@ -24,12 +24,19 @@ class NotificationPoller {
 
   bool _stop = true;
 
-  /// The key of the last delivered event.
+  /// The keys of the events that were delivered already.
   ///
   /// A listener re-requests the notification stream every time the server
-  /// closes it, and the server happily replays the event it still has
-  /// buffered. Without this guard every single event arrives twice.
-  String? _lastEventKey;
+  /// closes it, and the server happily replays the events it still has
+  /// buffered — the whole batch, not only the last one of it. Without this
+  /// guard every event of a replayed batch arrives twice.
+  ///
+  /// The set is bounded: the keys of the last [deliveredEventMemory] events
+  /// are kept, which is more than a replayed batch holds.
+  final Set<String> _deliveredEventKeys = <String>{};
+
+  /// How many event keys are remembered.
+  static const int deliveredEventMemory = 1000;
 
   bool get isStarted {
     return !_stop;
@@ -73,8 +80,10 @@ class NotificationPoller {
       for (final record in parseNotificationRecords(chunk)) {
         final key = eventKey(record);
         if (key != null) {
-          if (key == _lastEventKey) continue;
-          _lastEventKey = key;
+          if (!_deliveredEventKeys.add(key)) continue;
+          if (_deliveredEventKeys.length > deliveredEventMemory) {
+            _deliveredEventKeys.remove(_deliveredEventKeys.first);
+          }
         }
         _eventStream.add(record);
       }

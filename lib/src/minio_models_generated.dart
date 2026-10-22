@@ -8,13 +8,45 @@ XmlElement? getProp(XmlElement? xml, String name) {
   return result.isNotEmpty ? result.first : null;
 }
 
+/// The `<Events>` element of a notification configuration holds one
+/// `<Event>` child per event. Older servers write the events as the text of
+/// the element instead, and both forms are read.
+List<String>? eventsFromXml(XmlElement? xml) {
+  if (xml == null) return null;
+  final events = <String>[];
+  for (final event in xml.findElements('Event')) {
+    events.add(event.text);
+  }
+  if (events.isEmpty) {
+    final text = xml.text.trim();
+    if (text.isNotEmpty) {
+      events.add(text);
+    }
+  }
+  return events;
+}
+
+/// The `<XxxConfigurations>` element of a notification configuration holds one
+/// child element per configuration.
+List<T>? configurationsFromXml<T>(
+  XmlElement? xml,
+  T Function(XmlElement? xml) parse,
+) {
+  if (xml == null) return null;
+  final configurations = <T>[];
+  for (final child in xml.childElements) {
+    configurations.add(parse(child));
+  }
+  return configurations;
+}
+
 /// Specifies the days since the initiation of an incomplete multipart upload that Amazon S3 will wait before permanently removing all parts of the upload. For more information, see Aborting Incomplete Multipart Uploads Using a Bucket Lifecycle Policy in the Amazon Simple Storage Service Developer Guide.
 class AbortIncompleteMultipartUpload {
   AbortIncompleteMultipartUpload(this.daysAfterInitiation);
 
   AbortIncompleteMultipartUpload.fromXml(XmlElement? xml) {
     daysAfterInitiation = int.tryParse(
-      getProp(xml, 'DaysAfterInitiation')!.text,
+      getProp(xml, 'DaysAfterInitiation')?.text ?? '',
     );
   }
 
@@ -23,10 +55,12 @@ class AbortIncompleteMultipartUpload {
     builder.element(
       'AbortIncompleteMultipartUpload',
       nest: () {
-        builder.element(
-          'DaysAfterInitiation',
-          nest: daysAfterInitiation.toString(),
-        );
+        if (daysAfterInitiation != null) {
+          builder.element(
+            'DaysAfterInitiation',
+            nest: daysAfterInitiation.toString(),
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -40,7 +74,7 @@ class AbortIncompleteMultipartUpload {
 class AccelerateConfiguration {
   AccelerateConfiguration(this.status);
 
-  AccelerateConfiguration.fromXml(XmlElement xml) {
+  AccelerateConfiguration.fromXml(XmlElement? xml) {
     status = getProp(xml, 'Status')?.text;
   }
 
@@ -49,7 +83,9 @@ class AccelerateConfiguration {
     builder.element(
       'AccelerateConfiguration',
       nest: () {
-        builder.element('Status', nest: status);
+        if (status != null) {
+          builder.element('Status', nest: status);
+        }
       },
     );
     return builder.buildDocument();
@@ -73,8 +109,19 @@ class AccessControlPolicy {
     builder.element(
       'AccessControlPolicy',
       nest: () {
-        builder.element('Grants', nest: grants!.toXml());
-        builder.element('Owner', nest: owner!.toXml());
+        if (grants != null) {
+          builder.element(
+            'Grants',
+            nest: (grants!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (owner != null) {
+          builder.element(
+            'Owner',
+            nest: (owner!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -100,7 +147,9 @@ class AccessControlTranslation {
     builder.element(
       'AccessControlTranslation',
       nest: () {
-        builder.element('Owner', nest: owner);
+        if (owner != null) {
+          builder.element('Owner', nest: owner);
+        }
       },
     );
     return builder.buildDocument();
@@ -124,8 +173,16 @@ class AnalyticsAndOperator {
     builder.element(
       'AnalyticsAndOperator',
       nest: () {
-        builder.element('Prefix', nest: prefix);
-        builder.element('Tags', nest: tags!.toXml());
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (tags != null) {
+          builder.element(
+            'Tags',
+            nest: (tags!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -142,7 +199,7 @@ class AnalyticsAndOperator {
 class AnalyticsConfiguration {
   AnalyticsConfiguration(this.filter, this.id, this.storageClassAnalysis);
 
-  AnalyticsConfiguration.fromXml(XmlElement xml) {
+  AnalyticsConfiguration.fromXml(XmlElement? xml) {
     filter = AnalyticsFilter.fromXml(getProp(xml, 'Filter'));
     id = getProp(xml, 'Id')?.text;
     storageClassAnalysis = StorageClassAnalysis.fromXml(
@@ -155,12 +212,25 @@ class AnalyticsConfiguration {
     builder.element(
       'AnalyticsConfiguration',
       nest: () {
-        builder.element('Filter', nest: filter!.toXml());
-        builder.element('Id', nest: id);
-        builder.element(
-          'StorageClassAnalysis',
-          nest: storageClassAnalysis!.toXml(),
-        );
+        if (filter != null) {
+          builder.element(
+            'Filter',
+            nest: (filter!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (id != null) {
+          builder.element('Id', nest: id);
+        }
+
+        if (storageClassAnalysis != null) {
+          builder.element(
+            'StorageClassAnalysis',
+            nest: (storageClassAnalysis!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -191,10 +261,14 @@ class AnalyticsExportDestination {
     builder.element(
       'AnalyticsExportDestination',
       nest: () {
-        builder.element(
-          'S3BucketDestination',
-          nest: s3BucketDestination!.toXml(),
-        );
+        if (s3BucketDestination != null) {
+          builder.element(
+            'S3BucketDestination',
+            nest: (s3BucketDestination!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -219,9 +293,23 @@ class AnalyticsFilter {
     builder.element(
       'AnalyticsFilter',
       nest: () {
-        builder.element('And', nest: and!.toXml());
-        builder.element('Prefix', nest: prefix);
-        builder.element('Tag', nest: tag!.toXml());
+        if (and != null) {
+          builder.element(
+            'And',
+            nest: (and!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (tag != null) {
+          builder.element(
+            'Tag',
+            nest: (tag!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -258,10 +346,21 @@ class AnalyticsS3BucketDestination {
     builder.element(
       'AnalyticsS3BucketDestination',
       nest: () {
-        builder.element('Bucket', nest: bucket);
-        builder.element('BucketAccountId', nest: bucketAccountId);
-        builder.element('Format', nest: format);
-        builder.element('Prefix', nest: prefix);
+        if (bucket != null) {
+          builder.element('Bucket', nest: bucket);
+        }
+
+        if (bucketAccountId != null) {
+          builder.element('BucketAccountId', nest: bucketAccountId);
+        }
+
+        if (format != null) {
+          builder.element('Format', nest: format);
+        }
+
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
       },
     );
     return builder.buildDocument();
@@ -284,9 +383,9 @@ class AnalyticsS3BucketDestination {
 class Bucket {
   Bucket(this.creationDate, this.name);
 
-  factory Bucket.fromXml(XmlElement xml) {
+  factory Bucket.fromXml(XmlElement? xml) {
     return Bucket(
-      DateTime.parse(getProp(xml, 'CreationDate')!.text),
+      DateTime.tryParse(getProp(xml, 'CreationDate')?.text ?? ''),
       getProp(xml, 'Name')!.text,
     );
   }
@@ -296,7 +395,13 @@ class Bucket {
     builder.element(
       'Bucket',
       nest: () {
-        builder.element('CreationDate', nest: creationDate!.toIso8601String());
+        if (creationDate != null) {
+          builder.element(
+            'CreationDate',
+            nest: creationDate!.toIso8601String(),
+          );
+        }
+
         builder.element('Name', nest: name);
       },
     );
@@ -319,7 +424,7 @@ class Bucket {
 class BucketLifecycleConfiguration {
   BucketLifecycleConfiguration(this.rules);
 
-  BucketLifecycleConfiguration.fromXml(XmlElement xml) {
+  BucketLifecycleConfiguration.fromXml(XmlElement? xml) {
     rules = LifecycleRule.fromXml(getProp(xml, 'Rules'));
   }
 
@@ -328,7 +433,12 @@ class BucketLifecycleConfiguration {
     builder.element(
       'BucketLifecycleConfiguration',
       nest: () {
-        builder.element('Rules', nest: rules!.toXml());
+        if (rules != null) {
+          builder.element(
+            'Rules',
+            nest: (rules!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -342,7 +452,7 @@ class BucketLifecycleConfiguration {
 class BucketLoggingStatus {
   BucketLoggingStatus(this.loggingEnabled);
 
-  BucketLoggingStatus.fromXml(XmlElement xml) {
+  BucketLoggingStatus.fromXml(XmlElement? xml) {
     loggingEnabled = LoggingEnabled.fromXml(getProp(xml, 'LoggingEnabled'));
   }
 
@@ -351,7 +461,12 @@ class BucketLoggingStatus {
     builder.element(
       'BucketLoggingStatus',
       nest: () {
-        builder.element('LoggingEnabled', nest: loggingEnabled!.toXml());
+        if (loggingEnabled != null) {
+          builder.element(
+            'LoggingEnabled',
+            nest: (loggingEnabled!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -384,11 +499,25 @@ class CloudFunctionConfiguration {
     builder.element(
       'CloudFunctionConfiguration',
       nest: () {
-        builder.element('CloudFunction', nest: cloudFunction);
-        builder.element('Event', nest: event);
-        builder.element('Events', nest: events);
-        builder.element('Id', nest: id);
-        builder.element('InvocationRole', nest: invocationRole);
+        if (cloudFunction != null) {
+          builder.element('CloudFunction', nest: cloudFunction);
+        }
+
+        if (event != null) {
+          builder.element('Event', nest: event);
+        }
+
+        if (events != null) {
+          builder.element('Events', nest: events);
+        }
+
+        if (id != null) {
+          builder.element('Id', nest: id);
+        }
+
+        if (invocationRole != null) {
+          builder.element('InvocationRole', nest: invocationRole);
+        }
       },
     );
     return builder.buildDocument();
@@ -414,7 +543,7 @@ class CloudFunctionConfiguration {
 class CommonPrefix {
   CommonPrefix(this.prefix);
 
-  CommonPrefix.fromXml(XmlElement xml) {
+  CommonPrefix.fromXml(XmlElement? xml) {
     prefix = getProp(xml, 'Prefix')?.text;
   }
 
@@ -423,7 +552,9 @@ class CommonPrefix {
     builder.element(
       'CommonPrefix',
       nest: () {
-        builder.element('Prefix', nest: prefix);
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
       },
     );
     return builder.buildDocument();
@@ -437,7 +568,7 @@ class CommonPrefix {
 class CompletedMultipartUpload {
   CompletedMultipartUpload(this.parts);
 
-  CompletedMultipartUpload.fromXml(XmlElement xml) {
+  CompletedMultipartUpload.fromXml(XmlElement? xml) {
     parts = CompletedPart.fromXml(getProp(xml, 'Parts'));
   }
 
@@ -446,7 +577,12 @@ class CompletedMultipartUpload {
     builder.element(
       'CompletedMultipartUpload',
       nest: () {
-        builder.element('Parts', nest: parts!.toXml());
+        if (parts != null) {
+          builder.element(
+            'Parts',
+            nest: (parts!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -462,7 +598,7 @@ class CompletedPart {
 
   CompletedPart.fromXml(XmlElement? xml) {
     eTag = getProp(xml, 'ETag')?.text;
-    partNumber = int.tryParse(getProp(xml, 'PartNumber')!.text);
+    partNumber = int.tryParse(getProp(xml, 'PartNumber')?.text ?? '');
   }
 
   XmlNode toXml() {
@@ -470,8 +606,13 @@ class CompletedPart {
     builder.element(
       'Part',
       nest: () {
-        builder.element('ETag', nest: eTag);
-        builder.element('PartNumber', nest: partNumber.toString());
+        if (eTag != null) {
+          builder.element('ETag', nest: eTag);
+        }
+
+        if (partNumber != null) {
+          builder.element('PartNumber', nest: partNumber.toString());
+        }
       },
     );
     return builder.buildDocument().rootElement;
@@ -501,11 +642,16 @@ class Condition {
     builder.element(
       'Condition',
       nest: () {
-        builder.element(
-          'HttpErrorCodeReturnedEquals',
-          nest: httpErrorCodeReturnedEquals,
-        );
-        builder.element('KeyPrefixEquals', nest: keyPrefixEquals);
+        if (httpErrorCodeReturnedEquals != null) {
+          builder.element(
+            'HttpErrorCodeReturnedEquals',
+            nest: httpErrorCodeReturnedEquals,
+          );
+        }
+
+        if (keyPrefixEquals != null) {
+          builder.element('KeyPrefixEquals', nest: keyPrefixEquals);
+        }
       },
     );
     return builder.buildDocument();
@@ -535,9 +681,9 @@ class ContinuationEvent {
 class CopyObjectResult {
   CopyObjectResult(this.eTag, this.lastModified);
 
-  CopyObjectResult.fromXml(XmlElement xml) {
+  CopyObjectResult.fromXml(XmlElement? xml) {
     eTag = getProp(xml, 'ETag')?.text;
-    lastModified = DateTime.parse(getProp(xml, 'LastModified')!.text);
+    lastModified = DateTime.tryParse(getProp(xml, 'LastModified')?.text ?? '');
   }
 
   XmlNode toXml() {
@@ -545,8 +691,16 @@ class CopyObjectResult {
     builder.element(
       'CopyObjectResult',
       nest: () {
-        builder.element('ETag', nest: eTag);
-        builder.element('LastModified', nest: lastModified!.toIso8601String());
+        if (eTag != null) {
+          builder.element('ETag', nest: eTag);
+        }
+
+        if (lastModified != null) {
+          builder.element(
+            'LastModified',
+            nest: lastModified!.toIso8601String(),
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -563,9 +717,9 @@ class CopyObjectResult {
 class CopyPartResult {
   CopyPartResult(this.eTag, this.lastModified);
 
-  CopyPartResult.fromXml(XmlElement xml) {
+  CopyPartResult.fromXml(XmlElement? xml) {
     eTag = getProp(xml, 'ETag')?.text;
-    lastModified = DateTime.parse(getProp(xml, 'LastModified')!.text);
+    lastModified = DateTime.tryParse(getProp(xml, 'LastModified')?.text ?? '');
   }
 
   XmlNode toXml() {
@@ -573,8 +727,16 @@ class CopyPartResult {
     builder.element(
       'CopyPartResult',
       nest: () {
-        builder.element('ETag', nest: eTag);
-        builder.element('LastModified', nest: lastModified!.toIso8601String());
+        if (eTag != null) {
+          builder.element('ETag', nest: eTag);
+        }
+
+        if (lastModified != null) {
+          builder.element(
+            'LastModified',
+            nest: lastModified!.toIso8601String(),
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -591,7 +753,7 @@ class CopyPartResult {
 class CORSConfiguration {
   CORSConfiguration(this.cORSRules);
 
-  CORSConfiguration.fromXml(XmlElement xml) {
+  CORSConfiguration.fromXml(XmlElement? xml) {
     cORSRules = CORSRule.fromXml(getProp(xml, 'CORSRules'));
   }
 
@@ -600,7 +762,12 @@ class CORSConfiguration {
     builder.element(
       'CORSConfiguration',
       nest: () {
-        builder.element('CORSRules', nest: cORSRules!.toXml());
+        if (cORSRules != null) {
+          builder.element(
+            'CORSRules',
+            nest: (cORSRules!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -625,7 +792,7 @@ class CORSRule {
     allowedMethods = getProp(xml, 'AllowedMethods')?.text;
     allowedOrigins = getProp(xml, 'AllowedOrigins')?.text;
     exposeHeaders = getProp(xml, 'ExposeHeaders')?.text;
-    maxAgeSeconds = int.tryParse(getProp(xml, 'MaxAgeSeconds')!.text);
+    maxAgeSeconds = int.tryParse(getProp(xml, 'MaxAgeSeconds')?.text ?? '');
   }
 
   XmlNode toXml() {
@@ -633,11 +800,25 @@ class CORSRule {
     builder.element(
       'CORSRule',
       nest: () {
-        builder.element('AllowedHeaders', nest: allowedHeaders);
-        builder.element('AllowedMethods', nest: allowedMethods);
-        builder.element('AllowedOrigins', nest: allowedOrigins);
-        builder.element('ExposeHeaders', nest: exposeHeaders);
-        builder.element('MaxAgeSeconds', nest: maxAgeSeconds.toString());
+        if (allowedHeaders != null) {
+          builder.element('AllowedHeaders', nest: allowedHeaders);
+        }
+
+        if (allowedMethods != null) {
+          builder.element('AllowedMethods', nest: allowedMethods);
+        }
+
+        if (allowedOrigins != null) {
+          builder.element('AllowedOrigins', nest: allowedOrigins);
+        }
+
+        if (exposeHeaders != null) {
+          builder.element('ExposeHeaders', nest: exposeHeaders);
+        }
+
+        if (maxAgeSeconds != null) {
+          builder.element('MaxAgeSeconds', nest: maxAgeSeconds.toString());
+        }
       },
     );
     return builder.buildDocument();
@@ -663,7 +844,7 @@ class CORSRule {
 class CreateBucketConfiguration {
   CreateBucketConfiguration(this.locationConstraint);
 
-  CreateBucketConfiguration.fromXml(XmlElement xml) {
+  CreateBucketConfiguration.fromXml(XmlElement? xml) {
     locationConstraint = getProp(xml, 'LocationConstraint')?.text;
   }
 
@@ -672,7 +853,9 @@ class CreateBucketConfiguration {
     builder.element(
       'CreateBucketConfiguration',
       nest: () {
-        builder.element('LocationConstraint', nest: locationConstraint);
+        if (locationConstraint != null) {
+          builder.element('LocationConstraint', nest: locationConstraint);
+        }
       },
     );
     return builder.buildDocument();
@@ -711,16 +894,36 @@ class CSVInput {
     builder.element(
       'CSVInput',
       nest: () {
-        builder.element(
-          'AllowQuotedRecordDelimiter',
-          nest: allowQuotedRecordDelimiter! ? 'TRUE' : 'FALSE',
-        );
-        builder.element('Comments', nest: comments);
-        builder.element('FieldDelimiter', nest: fieldDelimiter);
-        builder.element('FileHeaderInfo', nest: fileHeaderInfo);
-        builder.element('QuoteCharacter', nest: quoteCharacter);
-        builder.element('QuoteEscapeCharacter', nest: quoteEscapeCharacter);
-        builder.element('RecordDelimiter', nest: recordDelimiter);
+        if (allowQuotedRecordDelimiter != null) {
+          builder.element(
+            'AllowQuotedRecordDelimiter',
+            nest: allowQuotedRecordDelimiter! ? 'TRUE' : 'FALSE',
+          );
+        }
+
+        if (comments != null) {
+          builder.element('Comments', nest: comments);
+        }
+
+        if (fieldDelimiter != null) {
+          builder.element('FieldDelimiter', nest: fieldDelimiter);
+        }
+
+        if (fileHeaderInfo != null) {
+          builder.element('FileHeaderInfo', nest: fileHeaderInfo);
+        }
+
+        if (quoteCharacter != null) {
+          builder.element('QuoteCharacter', nest: quoteCharacter);
+        }
+
+        if (quoteEscapeCharacter != null) {
+          builder.element('QuoteEscapeCharacter', nest: quoteEscapeCharacter);
+        }
+
+        if (recordDelimiter != null) {
+          builder.element('RecordDelimiter', nest: recordDelimiter);
+        }
       },
     );
     return builder.buildDocument();
@@ -771,11 +974,25 @@ class CSVOutput {
     builder.element(
       'CSVOutput',
       nest: () {
-        builder.element('FieldDelimiter', nest: fieldDelimiter);
-        builder.element('QuoteCharacter', nest: quoteCharacter);
-        builder.element('QuoteEscapeCharacter', nest: quoteEscapeCharacter);
-        builder.element('QuoteFields', nest: quoteFields);
-        builder.element('RecordDelimiter', nest: recordDelimiter);
+        if (fieldDelimiter != null) {
+          builder.element('FieldDelimiter', nest: fieldDelimiter);
+        }
+
+        if (quoteCharacter != null) {
+          builder.element('QuoteCharacter', nest: quoteCharacter);
+        }
+
+        if (quoteEscapeCharacter != null) {
+          builder.element('QuoteEscapeCharacter', nest: quoteEscapeCharacter);
+        }
+
+        if (quoteFields != null) {
+          builder.element('QuoteFields', nest: quoteFields);
+        }
+
+        if (recordDelimiter != null) {
+          builder.element('RecordDelimiter', nest: recordDelimiter);
+        }
       },
     );
     return builder.buildDocument();
@@ -802,9 +1019,9 @@ class DefaultRetention {
   DefaultRetention(this.days, this.mode, this.years);
 
   DefaultRetention.fromXml(XmlElement? xml) {
-    days = int.tryParse(getProp(xml, 'Days')!.text);
+    days = int.tryParse(getProp(xml, 'Days')?.text ?? '');
     mode = getProp(xml, 'Mode')?.text;
-    years = int.tryParse(getProp(xml, 'Years')!.text);
+    years = int.tryParse(getProp(xml, 'Years')?.text ?? '');
   }
 
   XmlNode toXml() {
@@ -812,9 +1029,17 @@ class DefaultRetention {
     builder.element(
       'DefaultRetention',
       nest: () {
-        builder.element('Days', nest: days.toString());
-        builder.element('Mode', nest: mode);
-        builder.element('Years', nest: years.toString());
+        if (days != null) {
+          builder.element('Days', nest: days.toString());
+        }
+
+        if (mode != null) {
+          builder.element('Mode', nest: mode);
+        }
+
+        if (years != null) {
+          builder.element('Years', nest: years.toString());
+        }
       },
     );
     return builder.buildDocument();
@@ -834,7 +1059,7 @@ class DefaultRetention {
 class Delete {
   Delete(this.objects, this.quiet);
 
-  // Delete.fromXml(XmlElement xml) {
+  // Delete.fromXml(XmlElement? xml) {
   //   objects = ObjectIdentifier.fromXml(getProp(xml, 'Objects'));
   //   quiet = getProp(xml, 'Quiet')?.text?.toUpperCase() == 'TRUE';
   // }
@@ -869,7 +1094,7 @@ class DeletedObject {
     this.versionId,
   );
 
-  DeletedObject.fromXml(XmlElement xml) {
+  DeletedObject.fromXml(XmlElement? xml) {
     deleteMarker = getProp(xml, 'DeleteMarker')?.text.toUpperCase() == 'TRUE';
     deleteMarkerVersionId = getProp(xml, 'DeleteMarkerVersionId')?.text;
     key = getProp(xml, 'Key')?.text;
@@ -881,10 +1106,24 @@ class DeletedObject {
     builder.element(
       'DeletedObject',
       nest: () {
-        builder.element('DeleteMarker', nest: deleteMarker! ? 'TRUE' : 'FALSE');
-        builder.element('DeleteMarkerVersionId', nest: deleteMarkerVersionId);
-        builder.element('Key', nest: key);
-        builder.element('VersionId', nest: versionId);
+        if (deleteMarker != null) {
+          builder.element(
+            'DeleteMarker',
+            nest: deleteMarker! ? 'TRUE' : 'FALSE',
+          );
+        }
+
+        if (deleteMarkerVersionId != null) {
+          builder.element('DeleteMarkerVersionId', nest: deleteMarkerVersionId);
+        }
+
+        if (key != null) {
+          builder.element('Key', nest: key);
+        }
+
+        if (versionId != null) {
+          builder.element('VersionId', nest: versionId);
+        }
       },
     );
     return builder.buildDocument();
@@ -913,10 +1152,10 @@ class DeleteMarkerEntry {
     this.versionId,
   );
 
-  DeleteMarkerEntry.fromXml(XmlElement xml) {
+  DeleteMarkerEntry.fromXml(XmlElement? xml) {
     isLatest = getProp(xml, 'IsLatest')?.text.toUpperCase() == 'TRUE';
     key = getProp(xml, 'Key')?.text;
-    lastModified = DateTime.parse(getProp(xml, 'LastModified')!.text);
+    lastModified = DateTime.tryParse(getProp(xml, 'LastModified')?.text ?? '');
     owner = Owner.fromXml(getProp(xml, 'Owner'));
     versionId = getProp(xml, 'VersionId')?.text;
   }
@@ -926,11 +1165,31 @@ class DeleteMarkerEntry {
     builder.element(
       'DeleteMarkerEntry',
       nest: () {
-        builder.element('IsLatest', nest: isLatest! ? 'TRUE' : 'FALSE');
-        builder.element('Key', nest: key);
-        builder.element('LastModified', nest: lastModified!.toIso8601String());
-        builder.element('Owner', nest: owner!.toXml());
-        builder.element('VersionId', nest: versionId);
+        if (isLatest != null) {
+          builder.element('IsLatest', nest: isLatest! ? 'TRUE' : 'FALSE');
+        }
+
+        if (key != null) {
+          builder.element('Key', nest: key);
+        }
+
+        if (lastModified != null) {
+          builder.element(
+            'LastModified',
+            nest: lastModified!.toIso8601String(),
+          );
+        }
+
+        if (owner != null) {
+          builder.element(
+            'Owner',
+            nest: (owner!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (versionId != null) {
+          builder.element('VersionId', nest: versionId);
+        }
       },
     );
     return builder.buildDocument();
@@ -965,7 +1224,9 @@ class DeleteMarkerReplication {
     builder.element(
       'DeleteMarkerReplication',
       nest: () {
-        builder.element('Status', nest: status);
+        if (status != null) {
+          builder.element('Status', nest: status);
+        }
       },
     );
     return builder.buildDocument();
@@ -1006,19 +1267,50 @@ class Destination {
     builder.element(
       'Destination',
       nest: () {
-        builder.element(
-          'AccessControlTranslation',
-          nest: accessControlTranslation!.toXml(),
-        );
-        builder.element('Account', nest: account);
-        builder.element('Bucket', nest: bucket);
-        builder.element(
-          'EncryptionConfiguration',
-          nest: encryptionConfiguration!.toXml(),
-        );
-        builder.element('Metrics', nest: metrics!.toXml());
-        builder.element('ReplicationTime', nest: replicationTime!.toXml());
-        builder.element('StorageClass', nest: storageClass);
+        if (accessControlTranslation != null) {
+          builder.element(
+            'AccessControlTranslation',
+            nest: (accessControlTranslation!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (account != null) {
+          builder.element('Account', nest: account);
+        }
+
+        if (bucket != null) {
+          builder.element('Bucket', nest: bucket);
+        }
+
+        if (encryptionConfiguration != null) {
+          builder.element(
+            'EncryptionConfiguration',
+            nest: (encryptionConfiguration!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (metrics != null) {
+          builder.element(
+            'Metrics',
+            nest: (metrics!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (replicationTime != null) {
+          builder.element(
+            'ReplicationTime',
+            nest:
+                (replicationTime!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (storageClass != null) {
+          builder.element('StorageClass', nest: storageClass);
+        }
       },
     );
     return builder.buildDocument();
@@ -1061,9 +1353,17 @@ class Encryption {
     builder.element(
       'Encryption',
       nest: () {
-        builder.element('EncryptionType', nest: encryptionType);
-        builder.element('KMSContext', nest: kMSContext);
-        builder.element('KMSKeyId', nest: kMSKeyId);
+        if (encryptionType != null) {
+          builder.element('EncryptionType', nest: encryptionType);
+        }
+
+        if (kMSContext != null) {
+          builder.element('KMSContext', nest: kMSContext);
+        }
+
+        if (kMSKeyId != null) {
+          builder.element('KMSKeyId', nest: kMSKeyId);
+        }
       },
     );
     return builder.buildDocument();
@@ -1092,7 +1392,9 @@ class EncryptionConfiguration {
     builder.element(
       'EncryptionConfiguration',
       nest: () {
-        builder.element('ReplicaKmsKeyID', nest: replicaKmsKeyID);
+        if (replicaKmsKeyID != null) {
+          builder.element('ReplicaKmsKeyID', nest: replicaKmsKeyID);
+        }
       },
     );
     return builder.buildDocument();
@@ -1119,7 +1421,7 @@ class EndEvent {
 class Error {
   Error(this.code, this.key, this.message, this.versionId);
 
-  Error.fromXml(XmlElement xml) {
+  Error.fromXml(XmlElement? xml) {
     code = getProp(xml, 'Code')?.text;
     key = getProp(xml, 'Key')?.text;
     message = getProp(xml, 'Message')?.text;
@@ -1131,10 +1433,21 @@ class Error {
     builder.element(
       'Error',
       nest: () {
-        builder.element('Code', nest: code);
-        builder.element('Key', nest: key);
-        builder.element('Message', nest: message);
-        builder.element('VersionId', nest: versionId);
+        if (code != null) {
+          builder.element('Code', nest: code);
+        }
+
+        if (key != null) {
+          builder.element('Key', nest: key);
+        }
+
+        if (message != null) {
+          builder.element('Message', nest: message);
+        }
+
+        if (versionId != null) {
+          builder.element('VersionId', nest: versionId);
+        }
       },
     );
     return builder.buildDocument();
@@ -1171,7 +1484,9 @@ class ErrorDocument {
     builder.element(
       'ErrorDocument',
       nest: () {
-        builder.element('Key', nest: key);
+        if (key != null) {
+          builder.element('Key', nest: key);
+        }
       },
     );
     return builder.buildDocument();
@@ -1194,7 +1509,9 @@ class ExistingObjectReplication {
     builder.element(
       'ExistingObjectReplication',
       nest: () {
-        builder.element('Status', nest: status);
+        if (status != null) {
+          builder.element('Status', nest: status);
+        }
       },
     );
     return builder.buildDocument();
@@ -1218,8 +1535,13 @@ class FilterRule {
     builder.element(
       'FilterRule',
       nest: () {
-        builder.element('Name', nest: name);
-        builder.element('Value', nest: value);
+        if (name != null) {
+          builder.element('Name', nest: name);
+        }
+
+        if (value != null) {
+          builder.element('Value', nest: value);
+        }
       },
     );
     return builder.buildDocument();
@@ -1245,7 +1567,9 @@ class GlacierJobParameters {
     builder.element(
       'GlacierJobParameters',
       nest: () {
-        builder.element('Tier', nest: tier);
+        if (tier != null) {
+          builder.element('Tier', nest: tier);
+        }
       },
     );
     return builder.buildDocument();
@@ -1269,8 +1593,16 @@ class Grant {
     builder.element(
       'Grant',
       nest: () {
-        builder.element('Grantee', nest: grantee!.toXml());
-        builder.element('Permission', nest: permission);
+        if (grantee != null) {
+          builder.element(
+            'Grantee',
+            nest: (grantee!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (permission != null) {
+          builder.element('Permission', nest: permission);
+        }
       },
     );
     return builder.buildDocument();
@@ -1300,11 +1632,25 @@ class Grantee {
     builder.element(
       'Grantee',
       nest: () {
-        builder.element('DisplayName', nest: displayName);
-        builder.element('EmailAddress', nest: emailAddress);
-        builder.element('ID', nest: iD);
-        builder.element('Type', nest: type);
-        builder.element('URI', nest: uRI);
+        if (displayName != null) {
+          builder.element('DisplayName', nest: displayName);
+        }
+
+        if (emailAddress != null) {
+          builder.element('EmailAddress', nest: emailAddress);
+        }
+
+        if (iD != null) {
+          builder.element('ID', nest: iD);
+        }
+
+        if (type != null) {
+          builder.element('Type', nest: type);
+        }
+
+        if (uRI != null) {
+          builder.element('URI', nest: uRI);
+        }
       },
     );
     return builder.buildDocument();
@@ -1339,7 +1685,9 @@ class IndexDocument {
     builder.element(
       'IndexDocument',
       nest: () {
-        builder.element('Suffix', nest: suffix);
+        if (suffix != null) {
+          builder.element('Suffix', nest: suffix);
+        }
       },
     );
     return builder.buildDocument();
@@ -1363,8 +1711,13 @@ class Initiator {
     builder.element(
       'Initiator',
       nest: () {
-        builder.element('DisplayName', nest: displayName);
-        builder.element('ID', nest: iD);
+        if (displayName != null) {
+          builder.element('DisplayName', nest: displayName);
+        }
+
+        if (iD != null) {
+          builder.element('ID', nest: iD);
+        }
       },
     );
     return builder.buildDocument();
@@ -1393,10 +1746,30 @@ class InputSerialization {
     builder.element(
       'InputSerialization',
       nest: () {
-        builder.element('CompressionType', nest: compressionType);
-        builder.element('CSV', nest: cSV!.toXml());
-        builder.element('JSON', nest: jSON!.toXml());
-        builder.element('Parquet', nest: parquet!.toXml());
+        if (compressionType != null) {
+          builder.element('CompressionType', nest: compressionType);
+        }
+
+        if (cSV != null) {
+          builder.element(
+            'CSV',
+            nest: (cSV!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (jSON != null) {
+          builder.element(
+            'JSON',
+            nest: (jSON!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (parquet != null) {
+          builder.element(
+            'Parquet',
+            nest: (parquet!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -1427,7 +1800,7 @@ class InventoryConfiguration {
     this.schedule,
   );
 
-  InventoryConfiguration.fromXml(XmlElement xml) {
+  InventoryConfiguration.fromXml(XmlElement? xml) {
     destination = InventoryDestination.fromXml(getProp(xml, 'Destination'));
     filter = InventoryFilter.fromXml(getProp(xml, 'Filter'));
     id = getProp(xml, 'Id')?.text;
@@ -1442,13 +1815,45 @@ class InventoryConfiguration {
     builder.element(
       'InventoryConfiguration',
       nest: () {
-        builder.element('Destination', nest: destination!.toXml());
-        builder.element('Filter', nest: filter!.toXml());
-        builder.element('Id', nest: id);
-        builder.element('IncludedObjectVersions', nest: includedObjectVersions);
-        builder.element('IsEnabled', nest: isEnabled! ? 'TRUE' : 'FALSE');
-        builder.element('OptionalFields', nest: optionalFields);
-        builder.element('Schedule', nest: schedule!.toXml());
+        if (destination != null) {
+          builder.element(
+            'Destination',
+            nest: (destination!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (filter != null) {
+          builder.element(
+            'Filter',
+            nest: (filter!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (id != null) {
+          builder.element('Id', nest: id);
+        }
+
+        if (includedObjectVersions != null) {
+          builder.element(
+            'IncludedObjectVersions',
+            nest: includedObjectVersions,
+          );
+        }
+
+        if (isEnabled != null) {
+          builder.element('IsEnabled', nest: isEnabled! ? 'TRUE' : 'FALSE');
+        }
+
+        if (optionalFields != null) {
+          builder.element('OptionalFields', nest: optionalFields);
+        }
+
+        if (schedule != null) {
+          builder.element(
+            'Schedule',
+            nest: (schedule!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -1491,10 +1896,14 @@ class InventoryDestination {
     builder.element(
       'InventoryDestination',
       nest: () {
-        builder.element(
-          'S3BucketDestination',
-          nest: s3BucketDestination!.toXml(),
-        );
+        if (s3BucketDestination != null) {
+          builder.element(
+            'S3BucketDestination',
+            nest: (s3BucketDestination!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -1518,8 +1927,19 @@ class InventoryEncryption {
     builder.element(
       'InventoryEncryption',
       nest: () {
-        builder.element('SSEKMS', nest: sSEKMS!.toXml());
-        builder.element('SSES3', nest: sSES3!.toXml());
+        if (sSEKMS != null) {
+          builder.element(
+            'SSEKMS',
+            nest: (sSEKMS!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (sSES3 != null) {
+          builder.element(
+            'SSES3',
+            nest: (sSES3!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -1545,7 +1965,9 @@ class InventoryFilter {
     builder.element(
       'InventoryFilter',
       nest: () {
-        builder.element('Prefix', nest: prefix);
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
       },
     );
     return builder.buildDocument();
@@ -1578,11 +2000,28 @@ class InventoryS3BucketDestination {
     builder.element(
       'InventoryS3BucketDestination',
       nest: () {
-        builder.element('AccountId', nest: accountId);
-        builder.element('Bucket', nest: bucket);
-        builder.element('Encryption', nest: encryption!.toXml());
-        builder.element('Format', nest: format);
-        builder.element('Prefix', nest: prefix);
+        if (accountId != null) {
+          builder.element('AccountId', nest: accountId);
+        }
+
+        if (bucket != null) {
+          builder.element('Bucket', nest: bucket);
+        }
+
+        if (encryption != null) {
+          builder.element(
+            'Encryption',
+            nest: (encryption!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (format != null) {
+          builder.element('Format', nest: format);
+        }
+
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
       },
     );
     return builder.buildDocument();
@@ -1617,7 +2056,9 @@ class InventorySchedule {
     builder.element(
       'InventorySchedule',
       nest: () {
-        builder.element('Frequency', nest: frequency);
+        if (frequency != null) {
+          builder.element('Frequency', nest: frequency);
+        }
       },
     );
     return builder.buildDocument();
@@ -1640,7 +2081,9 @@ class JSONInput {
     builder.element(
       'JSONInput',
       nest: () {
-        builder.element('Type', nest: type);
+        if (type != null) {
+          builder.element('Type', nest: type);
+        }
       },
     );
     return builder.buildDocument();
@@ -1663,7 +2106,9 @@ class JSONOutput {
     builder.element(
       'JSONOutput',
       nest: () {
-        builder.element('RecordDelimiter', nest: recordDelimiter);
+        if (recordDelimiter != null) {
+          builder.element('RecordDelimiter', nest: recordDelimiter);
+        }
       },
     );
     return builder.buildDocument();
@@ -1683,7 +2128,7 @@ class LambdaFunctionConfiguration {
   );
 
   LambdaFunctionConfiguration.fromXml(XmlElement? xml) {
-    events = getProp(xml, 'Events')?.text;
+    events = eventsFromXml(getProp(xml, 'Events'));
     filter = NotificationConfigurationFilter.fromXml(getProp(xml, 'Filter'));
     id = getProp(xml, 'Id')?.text;
     lambdaFunctionArn = getProp(xml, 'LambdaFunctionArn')?.text;
@@ -1694,17 +2139,37 @@ class LambdaFunctionConfiguration {
     builder.element(
       'LambdaFunctionConfiguration',
       nest: () {
-        builder.element('Events', nest: events);
-        builder.element('Filter', nest: filter!.toXml());
-        builder.element('Id', nest: id);
-        builder.element('LambdaFunctionArn', nest: lambdaFunctionArn);
+        if (events != null) {
+          builder.element(
+            'Events',
+            nest: () {
+              for (final event in events!) {
+                builder.element('Event', nest: event);
+              }
+            },
+          );
+        }
+        if (filter != null) {
+          builder.element(
+            'Filter',
+            nest: (filter!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (id != null) {
+          builder.element('Id', nest: id);
+        }
+
+        if (lambdaFunctionArn != null) {
+          builder.element('LambdaFunctionArn', nest: lambdaFunctionArn);
+        }
       },
     );
     return builder.buildDocument();
   }
 
   /// The Amazon S3 bucket event for which to invoke the AWS Lambda function. For more information, see Supported Event Types in the Amazon Simple Storage Service Developer Guide.
-  String? events;
+  List<String>? events;
 
   /// Specifies object key name filtering rules. For information about key name filtering, see Configuring Event Notifications in the Amazon Simple Storage Service Developer Guide.
   NotificationConfigurationFilter? filter;
@@ -1720,7 +2185,7 @@ class LambdaFunctionConfiguration {
 class LifecycleConfiguration {
   LifecycleConfiguration(this.rules);
 
-  LifecycleConfiguration.fromXml(XmlElement xml) {
+  LifecycleConfiguration.fromXml(XmlElement? xml) {
     rules = Rule.fromXml(getProp(xml, 'Rules'));
   }
 
@@ -1729,7 +2194,12 @@ class LifecycleConfiguration {
     builder.element(
       'LifecycleConfiguration',
       nest: () {
-        builder.element('Rules', nest: rules!.toXml());
+        if (rules != null) {
+          builder.element(
+            'Rules',
+            nest: (rules!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -1744,8 +2214,8 @@ class LifecycleExpiration {
   LifecycleExpiration(this.date, this.days, this.expiredObjectDeleteMarker);
 
   LifecycleExpiration.fromXml(XmlElement? xml) {
-    date = DateTime.parse(getProp(xml, 'Date')!.text);
-    days = int.tryParse(getProp(xml, 'Days')!.text);
+    date = DateTime.tryParse(getProp(xml, 'Date')?.text ?? '');
+    days = int.tryParse(getProp(xml, 'Days')?.text ?? '');
     expiredObjectDeleteMarker =
         getProp(xml, 'ExpiredObjectDeleteMarker')?.text.toUpperCase() == 'TRUE';
   }
@@ -1755,12 +2225,20 @@ class LifecycleExpiration {
     builder.element(
       'LifecycleExpiration',
       nest: () {
-        builder.element('Date', nest: date!.toIso8601String());
-        builder.element('Days', nest: days.toString());
-        builder.element(
-          'ExpiredObjectDeleteMarker',
-          nest: expiredObjectDeleteMarker! ? 'TRUE' : 'FALSE',
-        );
+        if (date != null) {
+          builder.element('Date', nest: date!.toIso8601String());
+        }
+
+        if (days != null) {
+          builder.element('Days', nest: days.toString());
+        }
+
+        if (expiredObjectDeleteMarker != null) {
+          builder.element(
+            'ExpiredObjectDeleteMarker',
+            nest: expiredObjectDeleteMarker! ? 'TRUE' : 'FALSE',
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -1813,24 +2291,65 @@ class LifecycleRule {
     builder.element(
       'LifecycleRule',
       nest: () {
-        builder.element(
-          'AbortIncompleteMultipartUpload',
-          nest: abortIncompleteMultipartUpload!.toXml(),
-        );
-        builder.element('Expiration', nest: expiration!.toXml());
-        builder.element('Filter', nest: filter!.toXml());
-        builder.element('ID', nest: iD);
-        builder.element(
-          'NoncurrentVersionExpiration',
-          nest: noncurrentVersionExpiration!.toXml(),
-        );
-        builder.element(
-          'NoncurrentVersionTransitions',
-          nest: noncurrentVersionTransitions!.toXml(),
-        );
-        builder.element('Prefix', nest: prefix);
-        builder.element('Status', nest: status);
-        builder.element('Transitions', nest: transitions!.toXml());
+        if (abortIncompleteMultipartUpload != null) {
+          builder.element(
+            'AbortIncompleteMultipartUpload',
+            nest: (abortIncompleteMultipartUpload!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (expiration != null) {
+          builder.element(
+            'Expiration',
+            nest: (expiration!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (filter != null) {
+          builder.element(
+            'Filter',
+            nest: (filter!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (iD != null) {
+          builder.element('ID', nest: iD);
+        }
+
+        if (noncurrentVersionExpiration != null) {
+          builder.element(
+            'NoncurrentVersionExpiration',
+            nest: (noncurrentVersionExpiration!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (noncurrentVersionTransitions != null) {
+          builder.element(
+            'NoncurrentVersionTransitions',
+            nest: (noncurrentVersionTransitions!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (status != null) {
+          builder.element('Status', nest: status);
+        }
+
+        if (transitions != null) {
+          builder.element(
+            'Transitions',
+            nest: (transitions!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -1878,8 +2397,16 @@ class LifecycleRuleAndOperator {
     builder.element(
       'LifecycleRuleAndOperator',
       nest: () {
-        builder.element('Prefix', nest: prefix);
-        builder.element('Tags', nest: tags!.toXml());
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (tags != null) {
+          builder.element(
+            'Tags',
+            nest: (tags!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -1907,9 +2434,23 @@ class LifecycleRuleFilter {
     builder.element(
       'LifecycleRuleFilter',
       nest: () {
-        builder.element('And', nest: and!.toXml());
-        builder.element('Prefix', nest: prefix);
-        builder.element('Tag', nest: tag!.toXml());
+        if (and != null) {
+          builder.element(
+            'And',
+            nest: (and!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (tag != null) {
+          builder.element(
+            'Tag',
+            nest: (tag!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -1940,9 +2481,20 @@ class LoggingEnabled {
     builder.element(
       'LoggingEnabled',
       nest: () {
-        builder.element('TargetBucket', nest: targetBucket);
-        builder.element('TargetGrants', nest: targetGrants!.toXml());
-        builder.element('TargetPrefix', nest: targetPrefix);
+        if (targetBucket != null) {
+          builder.element('TargetBucket', nest: targetBucket);
+        }
+
+        if (targetGrants != null) {
+          builder.element(
+            'TargetGrants',
+            nest: (targetGrants!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (targetPrefix != null) {
+          builder.element('TargetPrefix', nest: targetPrefix);
+        }
       },
     );
     return builder.buildDocument();
@@ -1972,8 +2524,13 @@ class MetadataEntry {
     builder.element(
       'MetadataEntry',
       nest: () {
-        builder.element('Name', nest: name);
-        builder.element('Value', nest: value);
+        if (name != null) {
+          builder.element('Name', nest: name);
+        }
+
+        if (value != null) {
+          builder.element('Value', nest: value);
+        }
       },
     );
     return builder.buildDocument();
@@ -2002,8 +2559,16 @@ class Metrics {
     builder.element(
       'Metrics',
       nest: () {
-        builder.element('EventThreshold', nest: eventThreshold!.toXml());
-        builder.element('Status', nest: status);
+        if (eventThreshold != null) {
+          builder.element(
+            'EventThreshold',
+            nest: (eventThreshold!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (status != null) {
+          builder.element('Status', nest: status);
+        }
       },
     );
     return builder.buildDocument();
@@ -2030,8 +2595,16 @@ class MetricsAndOperator {
     builder.element(
       'MetricsAndOperator',
       nest: () {
-        builder.element('Prefix', nest: prefix);
-        builder.element('Tags', nest: tags!.toXml());
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (tags != null) {
+          builder.element(
+            'Tags',
+            nest: (tags!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -2048,7 +2621,7 @@ class MetricsAndOperator {
 class MetricsConfiguration {
   MetricsConfiguration(this.filter, this.id);
 
-  MetricsConfiguration.fromXml(XmlElement xml) {
+  MetricsConfiguration.fromXml(XmlElement? xml) {
     filter = MetricsFilter.fromXml(getProp(xml, 'Filter'));
     id = getProp(xml, 'Id')?.text;
   }
@@ -2058,8 +2631,16 @@ class MetricsConfiguration {
     builder.element(
       'MetricsConfiguration',
       nest: () {
-        builder.element('Filter', nest: filter!.toXml());
-        builder.element('Id', nest: id);
+        if (filter != null) {
+          builder.element(
+            'Filter',
+            nest: (filter!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (id != null) {
+          builder.element('Id', nest: id);
+        }
       },
     );
     return builder.buildDocument();
@@ -2087,9 +2668,23 @@ class MetricsFilter {
     builder.element(
       'MetricsFilter',
       nest: () {
-        builder.element('And', nest: and!.toXml());
-        builder.element('Prefix', nest: prefix);
-        builder.element('Tag', nest: tag!.toXml());
+        if (and != null) {
+          builder.element(
+            'And',
+            nest: (and!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (tag != null) {
+          builder.element(
+            'Tag',
+            nest: (tag!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -2116,8 +2711,8 @@ class MultipartUpload {
     this.uploadId,
   );
 
-  MultipartUpload.fromXml(XmlElement xml) {
-    initiated = DateTime.parse(getProp(xml, 'Initiated')!.text);
+  MultipartUpload.fromXml(XmlElement? xml) {
+    initiated = DateTime.tryParse(getProp(xml, 'Initiated')?.text ?? '');
     initiator = Initiator.fromXml(getProp(xml, 'Initiator'));
     key = getProp(xml, 'Key')?.text;
     owner = Owner.fromXml(getProp(xml, 'Owner'));
@@ -2130,12 +2725,35 @@ class MultipartUpload {
     builder.element(
       'MultipartUpload',
       nest: () {
-        builder.element('Initiated', nest: initiated!.toIso8601String());
-        builder.element('Initiator', nest: initiator!.toXml());
-        builder.element('Key', nest: key);
-        builder.element('Owner', nest: owner!.toXml());
-        builder.element('StorageClass', nest: storageClass);
-        builder.element('UploadId', nest: uploadId);
+        if (initiated != null) {
+          builder.element('Initiated', nest: initiated!.toIso8601String());
+        }
+
+        if (initiator != null) {
+          builder.element(
+            'Initiator',
+            nest: (initiator!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (key != null) {
+          builder.element('Key', nest: key);
+        }
+
+        if (owner != null) {
+          builder.element(
+            'Owner',
+            nest: (owner!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (storageClass != null) {
+          builder.element('StorageClass', nest: storageClass);
+        }
+
+        if (uploadId != null) {
+          builder.element('UploadId', nest: uploadId);
+        }
       },
     );
     return builder.buildDocument();
@@ -2165,7 +2783,7 @@ class NoncurrentVersionExpiration {
   NoncurrentVersionExpiration(this.noncurrentDays);
 
   NoncurrentVersionExpiration.fromXml(XmlElement? xml) {
-    noncurrentDays = int.tryParse(getProp(xml, 'NoncurrentDays')!.text);
+    noncurrentDays = int.tryParse(getProp(xml, 'NoncurrentDays')?.text ?? '');
   }
 
   XmlNode toXml() {
@@ -2173,7 +2791,9 @@ class NoncurrentVersionExpiration {
     builder.element(
       'NoncurrentVersionExpiration',
       nest: () {
-        builder.element('NoncurrentDays', nest: noncurrentDays.toString());
+        if (noncurrentDays != null) {
+          builder.element('NoncurrentDays', nest: noncurrentDays.toString());
+        }
       },
     );
     return builder.buildDocument();
@@ -2188,7 +2808,7 @@ class NoncurrentVersionTransition {
   NoncurrentVersionTransition(this.noncurrentDays, this.storageClass);
 
   NoncurrentVersionTransition.fromXml(XmlElement? xml) {
-    noncurrentDays = int.tryParse(getProp(xml, 'NoncurrentDays')!.text);
+    noncurrentDays = int.tryParse(getProp(xml, 'NoncurrentDays')?.text ?? '');
     storageClass = getProp(xml, 'StorageClass')?.text;
   }
 
@@ -2197,8 +2817,13 @@ class NoncurrentVersionTransition {
     builder.element(
       'NoncurrentVersionTransition',
       nest: () {
-        builder.element('NoncurrentDays', nest: noncurrentDays.toString());
-        builder.element('StorageClass', nest: storageClass);
+        if (noncurrentDays != null) {
+          builder.element('NoncurrentDays', nest: noncurrentDays.toString());
+        }
+
+        if (storageClass != null) {
+          builder.element('StorageClass', nest: storageClass);
+        }
       },
     );
     return builder.buildDocument();
@@ -2219,15 +2844,19 @@ class NotificationConfiguration {
     this.topicConfigurations,
   );
 
-  NotificationConfiguration.fromXml(XmlElement xml) {
-    lambdaFunctionConfigurations = LambdaFunctionConfiguration.fromXml(
-      getProp(xml, 'LambdaFunctionConfigurations'),
-    );
-    queueConfigurations = QueueConfiguration.fromXml(
+  NotificationConfiguration.fromXml(XmlElement? xml) {
+    lambdaFunctionConfigurations =
+        configurationsFromXml<LambdaFunctionConfiguration>(
+          getProp(xml, 'LambdaFunctionConfigurations'),
+          LambdaFunctionConfiguration.fromXml,
+        );
+    queueConfigurations = configurationsFromXml<QueueConfiguration>(
       getProp(xml, 'QueueConfigurations'),
+      QueueConfiguration.fromXml,
     );
-    topicConfigurations = TopicConfiguration.fromXml(
+    topicConfigurations = configurationsFromXml<TopicConfiguration>(
       getProp(xml, 'TopicConfigurations'),
+      TopicConfiguration.fromXml,
     );
   }
 
@@ -2239,19 +2868,46 @@ class NotificationConfiguration {
         if (lambdaFunctionConfigurations != null) {
           builder.element(
             'LambdaFunctionConfigurations',
-            nest: lambdaFunctionConfigurations!.toXml(),
+            nest: () {
+              for (final configuration in lambdaFunctionConfigurations!) {
+                builder.element(
+                  'LambdaFunctionConfiguration',
+                  nest: (configuration.toXml() as XmlDocument)
+                      .rootElement
+                      .children,
+                );
+              }
+            },
           );
         }
         if (queueConfigurations != null) {
           builder.element(
             'QueueConfigurations',
-            nest: queueConfigurations!.toXml(),
+            nest: () {
+              for (final configuration in queueConfigurations!) {
+                builder.element(
+                  'QueueConfiguration',
+                  nest: (configuration.toXml() as XmlDocument)
+                      .rootElement
+                      .children,
+                );
+              }
+            },
           );
         }
         if (topicConfigurations != null) {
           builder.element(
             'TopicConfigurations',
-            nest: topicConfigurations!.toXml(),
+            nest: () {
+              for (final configuration in topicConfigurations!) {
+                builder.element(
+                  'TopicConfiguration',
+                  nest: (configuration.toXml() as XmlDocument)
+                      .rootElement
+                      .children,
+                );
+              }
+            },
           );
         }
       },
@@ -2260,13 +2916,13 @@ class NotificationConfiguration {
   }
 
   /// Describes the AWS Lambda functions to invoke and the events for which to invoke them.
-  LambdaFunctionConfiguration? lambdaFunctionConfigurations;
+  List<LambdaFunctionConfiguration>? lambdaFunctionConfigurations;
 
   /// The Amazon Simple Queue Service queues to publish messages to and the events for which to publish messages.
-  QueueConfiguration? queueConfigurations;
+  List<QueueConfiguration>? queueConfigurations;
 
   /// The topic to which notifications are sent and the events for which notifications are generated.
-  TopicConfiguration? topicConfigurations;
+  List<TopicConfiguration>? topicConfigurations;
 }
 
 /// Container for specifying the AWS Lambda notification configuration.
@@ -2277,7 +2933,7 @@ class NotificationConfigurationDeprecated {
     this.topicConfiguration,
   );
 
-  NotificationConfigurationDeprecated.fromXml(XmlElement xml) {
+  NotificationConfigurationDeprecated.fromXml(XmlElement? xml) {
     cloudFunctionConfiguration = CloudFunctionConfiguration.fromXml(
       getProp(xml, 'CloudFunctionConfiguration'),
     );
@@ -2294,18 +2950,32 @@ class NotificationConfigurationDeprecated {
     builder.element(
       'NotificationConfigurationDeprecated',
       nest: () {
-        builder.element(
-          'CloudFunctionConfiguration',
-          nest: cloudFunctionConfiguration!.toXml(),
-        );
-        builder.element(
-          'QueueConfiguration',
-          nest: queueConfiguration!.toXml(),
-        );
-        builder.element(
-          'TopicConfiguration',
-          nest: topicConfiguration!.toXml(),
-        );
+        if (cloudFunctionConfiguration != null) {
+          builder.element(
+            'CloudFunctionConfiguration',
+            nest: (cloudFunctionConfiguration!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (queueConfiguration != null) {
+          builder.element(
+            'QueueConfiguration',
+            nest: (queueConfiguration!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (topicConfiguration != null) {
+          builder.element(
+            'TopicConfiguration',
+            nest: (topicConfiguration!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -2334,7 +3004,12 @@ class NotificationConfigurationFilter {
     builder.element(
       'NotificationConfigurationFilter',
       nest: () {
-        builder.element('Key', nest: key!.toXml());
+        if (key != null) {
+          builder.element(
+            'Key',
+            nest: (key!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -2355,12 +3030,12 @@ class Object {
     this.storageClass,
   );
 
-  Object.fromXml(XmlElement xml) {
+  Object.fromXml(XmlElement? xml) {
     eTag = getProp(xml, 'ETag')?.text;
     key = getProp(xml, 'Key')?.text;
-    lastModified = DateTime.parse(getProp(xml, 'LastModified')!.text);
+    lastModified = DateTime.tryParse(getProp(xml, 'LastModified')?.text ?? '');
     owner = Owner.fromXml(getProp(xml, 'Owner'));
-    size = int.tryParse(getProp(xml, 'Size')!.text);
+    size = int.tryParse(getProp(xml, 'Size')?.text ?? '');
     storageClass = getProp(xml, 'StorageClass')?.text;
   }
 
@@ -2369,12 +3044,35 @@ class Object {
     builder.element(
       'Object',
       nest: () {
-        builder.element('ETag', nest: eTag);
-        builder.element('Key', nest: key);
-        builder.element('LastModified', nest: lastModified!.toIso8601String());
-        builder.element('Owner', nest: owner!.toXml());
-        builder.element('Size', nest: size.toString());
-        builder.element('StorageClass', nest: storageClass);
+        if (eTag != null) {
+          builder.element('ETag', nest: eTag);
+        }
+
+        if (key != null) {
+          builder.element('Key', nest: key);
+        }
+
+        if (lastModified != null) {
+          builder.element(
+            'LastModified',
+            nest: lastModified!.toIso8601String(),
+          );
+        }
+
+        if (owner != null) {
+          builder.element(
+            'Owner',
+            nest: (owner!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (size != null) {
+          builder.element('Size', nest: size.toString());
+        }
+
+        if (storageClass != null) {
+          builder.element('StorageClass', nest: storageClass);
+        }
       },
     );
     return builder.buildDocument();
@@ -2408,7 +3106,7 @@ class Object {
 class ObjectIdentifier {
   ObjectIdentifier(this.key, this.versionId);
 
-  ObjectIdentifier.fromXml(XmlElement xml) {
+  ObjectIdentifier.fromXml(XmlElement? xml) {
     key = getProp(xml, 'Key')?.text;
     versionId = getProp(xml, 'VersionId')?.text;
   }
@@ -2438,7 +3136,7 @@ class ObjectIdentifier {
 class ObjectLockConfiguration {
   ObjectLockConfiguration(this.objectLockEnabled, this.rule);
 
-  ObjectLockConfiguration.fromXml(XmlElement xml) {
+  ObjectLockConfiguration.fromXml(XmlElement? xml) {
     objectLockEnabled = getProp(xml, 'ObjectLockEnabled')?.text;
     rule = ObjectLockRule.fromXml(getProp(xml, 'Rule'));
   }
@@ -2448,8 +3146,16 @@ class ObjectLockConfiguration {
     builder.element(
       'ObjectLockConfiguration',
       nest: () {
-        builder.element('ObjectLockEnabled', nest: objectLockEnabled);
-        builder.element('Rule', nest: rule!.toXml());
+        if (objectLockEnabled != null) {
+          builder.element('ObjectLockEnabled', nest: objectLockEnabled);
+        }
+
+        if (rule != null) {
+          builder.element(
+            'Rule',
+            nest: (rule!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -2466,7 +3172,7 @@ class ObjectLockConfiguration {
 class ObjectLockLegalHold {
   ObjectLockLegalHold(this.status);
 
-  ObjectLockLegalHold.fromXml(XmlElement xml) {
+  ObjectLockLegalHold.fromXml(XmlElement? xml) {
     status = getProp(xml, 'Status')?.text;
   }
 
@@ -2475,7 +3181,9 @@ class ObjectLockLegalHold {
     builder.element(
       'ObjectLockLegalHold',
       nest: () {
-        builder.element('Status', nest: status);
+        if (status != null) {
+          builder.element('Status', nest: status);
+        }
       },
     );
     return builder.buildDocument();
@@ -2489,9 +3197,11 @@ class ObjectLockLegalHold {
 class ObjectLockRetention {
   ObjectLockRetention(this.mode, this.retainUntilDate);
 
-  ObjectLockRetention.fromXml(XmlElement xml) {
+  ObjectLockRetention.fromXml(XmlElement? xml) {
     mode = getProp(xml, 'Mode')?.text;
-    retainUntilDate = DateTime.parse(getProp(xml, 'RetainUntilDate')!.text);
+    retainUntilDate = DateTime.tryParse(
+      getProp(xml, 'RetainUntilDate')?.text ?? '',
+    );
   }
 
   XmlNode toXml() {
@@ -2499,11 +3209,16 @@ class ObjectLockRetention {
     builder.element(
       'ObjectLockRetention',
       nest: () {
-        builder.element('Mode', nest: mode);
-        builder.element(
-          'RetainUntilDate',
-          nest: retainUntilDate!.toIso8601String(),
-        );
+        if (mode != null) {
+          builder.element('Mode', nest: mode);
+        }
+
+        if (retainUntilDate != null) {
+          builder.element(
+            'RetainUntilDate',
+            nest: retainUntilDate!.toIso8601String(),
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -2531,7 +3246,13 @@ class ObjectLockRule {
     builder.element(
       'ObjectLockRule',
       nest: () {
-        builder.element('DefaultRetention', nest: defaultRetention!.toXml());
+        if (defaultRetention != null) {
+          builder.element(
+            'DefaultRetention',
+            nest:
+                (defaultRetention!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -2554,13 +3275,13 @@ class ObjectVersion {
     this.versionId,
   );
 
-  ObjectVersion.fromXml(XmlElement xml) {
+  ObjectVersion.fromXml(XmlElement? xml) {
     eTag = getProp(xml, 'ETag')?.text;
     isLatest = getProp(xml, 'IsLatest')?.text.toUpperCase() == 'TRUE';
     key = getProp(xml, 'Key')?.text;
-    lastModified = DateTime.parse(getProp(xml, 'LastModified')!.text);
+    lastModified = DateTime.tryParse(getProp(xml, 'LastModified')?.text ?? '');
     owner = Owner.fromXml(getProp(xml, 'Owner'));
-    size = int.tryParse(getProp(xml, 'Size')!.text);
+    size = int.tryParse(getProp(xml, 'Size')?.text ?? '');
     storageClass = getProp(xml, 'StorageClass')?.text;
     versionId = getProp(xml, 'VersionId')?.text;
   }
@@ -2570,14 +3291,43 @@ class ObjectVersion {
     builder.element(
       'ObjectVersion',
       nest: () {
-        builder.element('ETag', nest: eTag);
-        builder.element('IsLatest', nest: isLatest! ? 'TRUE' : 'FALSE');
-        builder.element('Key', nest: key);
-        builder.element('LastModified', nest: lastModified!.toIso8601String());
-        builder.element('Owner', nest: owner!.toXml());
-        builder.element('Size', nest: size.toString());
-        builder.element('StorageClass', nest: storageClass);
-        builder.element('VersionId', nest: versionId);
+        if (eTag != null) {
+          builder.element('ETag', nest: eTag);
+        }
+
+        if (isLatest != null) {
+          builder.element('IsLatest', nest: isLatest! ? 'TRUE' : 'FALSE');
+        }
+
+        if (key != null) {
+          builder.element('Key', nest: key);
+        }
+
+        if (lastModified != null) {
+          builder.element(
+            'LastModified',
+            nest: lastModified!.toIso8601String(),
+          );
+        }
+
+        if (owner != null) {
+          builder.element(
+            'Owner',
+            nest: (owner!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (size != null) {
+          builder.element('Size', nest: size.toString());
+        }
+
+        if (storageClass != null) {
+          builder.element('StorageClass', nest: storageClass);
+        }
+
+        if (versionId != null) {
+          builder.element('VersionId', nest: versionId);
+        }
       },
     );
     return builder.buildDocument();
@@ -2621,7 +3371,12 @@ class OutputLocation {
     builder.element(
       'OutputLocation',
       nest: () {
-        builder.element('S3', nest: s3!.toXml());
+        if (s3 != null) {
+          builder.element(
+            'S3',
+            nest: (s3!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -2645,8 +3400,19 @@ class OutputSerialization {
     builder.element(
       'OutputSerialization',
       nest: () {
-        builder.element('CSV', nest: cSV!.toXml());
-        builder.element('JSON', nest: jSON!.toXml());
+        if (cSV != null) {
+          builder.element(
+            'CSV',
+            nest: (cSV!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (jSON != null) {
+          builder.element(
+            'JSON',
+            nest: (jSON!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -2673,8 +3439,13 @@ class Owner {
     builder.element(
       'Owner',
       nest: () {
-        builder.element('DisplayName', nest: displayName);
-        builder.element('ID', nest: iD);
+        if (displayName != null) {
+          builder.element('DisplayName', nest: displayName);
+        }
+
+        if (iD != null) {
+          builder.element('ID', nest: iD);
+        }
       },
     );
     return builder.buildDocument();
@@ -2704,11 +3475,11 @@ class ParquetInput {
 class Part {
   Part(this.eTag, this.lastModified, this.partNumber, this.size);
 
-  Part.fromXml(XmlElement xml) {
+  Part.fromXml(XmlElement? xml) {
     eTag = getProp(xml, 'ETag')?.text;
-    lastModified = DateTime.parse(getProp(xml, 'LastModified')!.text);
-    partNumber = int.tryParse(getProp(xml, 'PartNumber')!.text);
-    size = int.tryParse(getProp(xml, 'Size')!.text);
+    lastModified = DateTime.tryParse(getProp(xml, 'LastModified')?.text ?? '');
+    partNumber = int.tryParse(getProp(xml, 'PartNumber')?.text ?? '');
+    size = int.tryParse(getProp(xml, 'Size')?.text ?? '');
   }
 
   XmlNode toXml() {
@@ -2716,10 +3487,24 @@ class Part {
     builder.element(
       'Part',
       nest: () {
-        builder.element('ETag', nest: eTag);
-        builder.element('LastModified', nest: lastModified!.toIso8601String());
-        builder.element('PartNumber', nest: partNumber.toString());
-        builder.element('Size', nest: size.toString());
+        if (eTag != null) {
+          builder.element('ETag', nest: eTag);
+        }
+
+        if (lastModified != null) {
+          builder.element(
+            'LastModified',
+            nest: lastModified!.toIso8601String(),
+          );
+        }
+
+        if (partNumber != null) {
+          builder.element('PartNumber', nest: partNumber.toString());
+        }
+
+        if (size != null) {
+          builder.element('Size', nest: size.toString());
+        }
       },
     );
     return builder.buildDocument();
@@ -2742,7 +3527,7 @@ class Part {
 class PolicyStatus {
   PolicyStatus(this.isPublic);
 
-  PolicyStatus.fromXml(XmlElement xml) {
+  PolicyStatus.fromXml(XmlElement? xml) {
     isPublic = getProp(xml, 'IsPublic')?.text.toUpperCase() == 'TRUE';
   }
 
@@ -2751,7 +3536,9 @@ class PolicyStatus {
     builder.element(
       'PolicyStatus',
       nest: () {
-        builder.element('IsPublic', nest: isPublic! ? 'TRUE' : 'FALSE');
+        if (isPublic != null) {
+          builder.element('IsPublic', nest: isPublic! ? 'TRUE' : 'FALSE');
+        }
       },
     );
     return builder.buildDocument();
@@ -2766,9 +3553,9 @@ class Progress {
   Progress(this.bytesProcessed, this.bytesReturned, this.bytesScanned);
 
   Progress.fromXml(XmlElement? xml) {
-    bytesProcessed = int.tryParse(getProp(xml, 'BytesProcessed')!.text);
-    bytesReturned = int.tryParse(getProp(xml, 'BytesReturned')!.text);
-    bytesScanned = int.tryParse(getProp(xml, 'BytesScanned')!.text);
+    bytesProcessed = int.tryParse(getProp(xml, 'BytesProcessed')?.text ?? '');
+    bytesReturned = int.tryParse(getProp(xml, 'BytesReturned')?.text ?? '');
+    bytesScanned = int.tryParse(getProp(xml, 'BytesScanned')?.text ?? '');
   }
 
   XmlNode toXml() {
@@ -2776,9 +3563,17 @@ class Progress {
     builder.element(
       'Progress',
       nest: () {
-        builder.element('BytesProcessed', nest: bytesProcessed.toString());
-        builder.element('BytesReturned', nest: bytesReturned.toString());
-        builder.element('BytesScanned', nest: bytesScanned.toString());
+        if (bytesProcessed != null) {
+          builder.element('BytesProcessed', nest: bytesProcessed.toString());
+        }
+
+        if (bytesReturned != null) {
+          builder.element('BytesReturned', nest: bytesReturned.toString());
+        }
+
+        if (bytesScanned != null) {
+          builder.element('BytesScanned', nest: bytesScanned.toString());
+        }
       },
     );
     return builder.buildDocument();
@@ -2807,7 +3602,12 @@ class ProgressEvent {
     builder.element(
       'ProgressEvent',
       nest: () {
-        builder.element('Details', nest: details!.toXml());
+        if (details != null) {
+          builder.element(
+            'Details',
+            nest: (details!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -2826,7 +3626,7 @@ class PublicAccessBlockConfiguration {
     this.restrictPublicBuckets,
   );
 
-  PublicAccessBlockConfiguration.fromXml(XmlElement xml) {
+  PublicAccessBlockConfiguration.fromXml(XmlElement? xml) {
     blockPublicAcls =
         getProp(xml, 'BlockPublicAcls')?.text.toUpperCase() == 'TRUE';
     blockPublicPolicy =
@@ -2842,22 +3642,33 @@ class PublicAccessBlockConfiguration {
     builder.element(
       'PublicAccessBlockConfiguration',
       nest: () {
-        builder.element(
-          'BlockPublicAcls',
-          nest: blockPublicAcls! ? 'TRUE' : 'FALSE',
-        );
-        builder.element(
-          'BlockPublicPolicy',
-          nest: blockPublicPolicy! ? 'TRUE' : 'FALSE',
-        );
-        builder.element(
-          'IgnorePublicAcls',
-          nest: ignorePublicAcls! ? 'TRUE' : 'FALSE',
-        );
-        builder.element(
-          'RestrictPublicBuckets',
-          nest: restrictPublicBuckets! ? 'TRUE' : 'FALSE',
-        );
+        if (blockPublicAcls != null) {
+          builder.element(
+            'BlockPublicAcls',
+            nest: blockPublicAcls! ? 'TRUE' : 'FALSE',
+          );
+        }
+
+        if (blockPublicPolicy != null) {
+          builder.element(
+            'BlockPublicPolicy',
+            nest: blockPublicPolicy! ? 'TRUE' : 'FALSE',
+          );
+        }
+
+        if (ignorePublicAcls != null) {
+          builder.element(
+            'IgnorePublicAcls',
+            nest: ignorePublicAcls! ? 'TRUE' : 'FALSE',
+          );
+        }
+
+        if (restrictPublicBuckets != null) {
+          builder.element(
+            'RestrictPublicBuckets',
+            nest: restrictPublicBuckets! ? 'TRUE' : 'FALSE',
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -2881,7 +3692,7 @@ class QueueConfiguration {
   QueueConfiguration(this.events, this.filter, this.id, this.queueArn);
 
   QueueConfiguration.fromXml(XmlElement? xml) {
-    events = getProp(xml, 'Events')?.text;
+    events = eventsFromXml(getProp(xml, 'Events'));
     filter = NotificationConfigurationFilter.fromXml(getProp(xml, 'Filter'));
     id = getProp(xml, 'Id')?.text;
     queueArn = getProp(xml, 'QueueArn')?.text;
@@ -2892,17 +3703,37 @@ class QueueConfiguration {
     builder.element(
       'QueueConfiguration',
       nest: () {
-        builder.element('Events', nest: events);
-        builder.element('Filter', nest: filter!.toXml());
-        builder.element('Id', nest: id);
-        builder.element('QueueArn', nest: queueArn);
+        if (events != null) {
+          builder.element(
+            'Events',
+            nest: () {
+              for (final event in events!) {
+                builder.element('Event', nest: event);
+              }
+            },
+          );
+        }
+        if (filter != null) {
+          builder.element(
+            'Filter',
+            nest: (filter!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (id != null) {
+          builder.element('Id', nest: id);
+        }
+
+        if (queueArn != null) {
+          builder.element('QueueArn', nest: queueArn);
+        }
       },
     );
     return builder.buildDocument();
   }
 
   /// A collection of bucket events for which to send notifications
-  String? events;
+  List<String>? events;
 
   /// Specifies object key name filtering rules. For information about key name filtering, see Configuring Event Notifications in the Amazon Simple Storage Service Developer Guide.
   NotificationConfigurationFilter? filter;
@@ -2930,10 +3761,21 @@ class QueueConfigurationDeprecated {
     builder.element(
       'QueueConfigurationDeprecated',
       nest: () {
-        builder.element('Event', nest: event);
-        builder.element('Events', nest: events);
-        builder.element('Id', nest: id);
-        builder.element('Queue', nest: queue);
+        if (event != null) {
+          builder.element('Event', nest: event);
+        }
+
+        if (events != null) {
+          builder.element('Events', nest: events);
+        }
+
+        if (id != null) {
+          builder.element('Id', nest: id);
+        }
+
+        if (queue != null) {
+          builder.element('Queue', nest: queue);
+        }
       },
     );
     return builder.buildDocument();
@@ -2965,7 +3807,9 @@ class RecordsEvent {
     builder.element(
       'RecordsEvent',
       nest: () {
-        builder.element('Payload', nest: payload);
+        if (payload != null) {
+          builder.element('Payload', nest: payload);
+        }
       },
     );
     return builder.buildDocument();
@@ -2998,11 +3842,25 @@ class Redirect {
     builder.element(
       'Redirect',
       nest: () {
-        builder.element('HostName', nest: hostName);
-        builder.element('HttpRedirectCode', nest: httpRedirectCode);
-        builder.element('Protocol', nest: protocol);
-        builder.element('ReplaceKeyPrefixWith', nest: replaceKeyPrefixWith);
-        builder.element('ReplaceKeyWith', nest: replaceKeyWith);
+        if (hostName != null) {
+          builder.element('HostName', nest: hostName);
+        }
+
+        if (httpRedirectCode != null) {
+          builder.element('HttpRedirectCode', nest: httpRedirectCode);
+        }
+
+        if (protocol != null) {
+          builder.element('Protocol', nest: protocol);
+        }
+
+        if (replaceKeyPrefixWith != null) {
+          builder.element('ReplaceKeyPrefixWith', nest: replaceKeyPrefixWith);
+        }
+
+        if (replaceKeyWith != null) {
+          builder.element('ReplaceKeyWith', nest: replaceKeyWith);
+        }
       },
     );
     return builder.buildDocument();
@@ -3038,8 +3896,13 @@ class RedirectAllRequestsTo {
     builder.element(
       'RedirectAllRequestsTo',
       nest: () {
-        builder.element('HostName', nest: hostName);
-        builder.element('Protocol', nest: protocol);
+        if (hostName != null) {
+          builder.element('HostName', nest: hostName);
+        }
+
+        if (protocol != null) {
+          builder.element('Protocol', nest: protocol);
+        }
       },
     );
     return builder.buildDocument();
@@ -3056,7 +3919,7 @@ class RedirectAllRequestsTo {
 class ReplicationConfiguration {
   ReplicationConfiguration(this.role, this.rules);
 
-  ReplicationConfiguration.fromXml(XmlElement xml) {
+  ReplicationConfiguration.fromXml(XmlElement? xml) {
     role = getProp(xml, 'Role')?.text;
     rules = ReplicationRule.fromXml(getProp(xml, 'Rules'));
   }
@@ -3066,8 +3929,16 @@ class ReplicationConfiguration {
     builder.element(
       'ReplicationConfiguration',
       nest: () {
-        builder.element('Role', nest: role);
-        builder.element('Rules', nest: rules!.toXml());
+        if (role != null) {
+          builder.element('Role', nest: role);
+        }
+
+        if (rules != null) {
+          builder.element(
+            'Rules',
+            nest: (rules!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -3105,7 +3976,7 @@ class ReplicationRule {
     filter = ReplicationRuleFilter.fromXml(getProp(xml, 'Filter'));
     iD = getProp(xml, 'ID')?.text;
     prefix = getProp(xml, 'Prefix')?.text;
-    priority = int.tryParse(getProp(xml, 'Priority')!.text);
+    priority = int.tryParse(getProp(xml, 'Priority')?.text ?? '');
     sourceSelectionCriteria = SourceSelectionCriteria.fromXml(
       getProp(xml, 'SourceSelectionCriteria'),
     );
@@ -3117,24 +3988,62 @@ class ReplicationRule {
     builder.element(
       'ReplicationRule',
       nest: () {
-        builder.element(
-          'DeleteMarkerReplication',
-          nest: deleteMarkerReplication!.toXml(),
-        );
-        builder.element('Destination', nest: destination!.toXml());
-        builder.element(
-          'ExistingObjectReplication',
-          nest: existingObjectReplication!.toXml(),
-        );
-        builder.element('Filter', nest: filter!.toXml());
-        builder.element('ID', nest: iD);
-        builder.element('Prefix', nest: prefix);
-        builder.element('Priority', nest: priority.toString());
-        builder.element(
-          'SourceSelectionCriteria',
-          nest: sourceSelectionCriteria!.toXml(),
-        );
-        builder.element('Status', nest: status);
+        if (deleteMarkerReplication != null) {
+          builder.element(
+            'DeleteMarkerReplication',
+            nest: (deleteMarkerReplication!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (destination != null) {
+          builder.element(
+            'Destination',
+            nest: (destination!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (existingObjectReplication != null) {
+          builder.element(
+            'ExistingObjectReplication',
+            nest: (existingObjectReplication!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (filter != null) {
+          builder.element(
+            'Filter',
+            nest: (filter!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (iD != null) {
+          builder.element('ID', nest: iD);
+        }
+
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (priority != null) {
+          builder.element('Priority', nest: priority.toString());
+        }
+
+        if (sourceSelectionCriteria != null) {
+          builder.element(
+            'SourceSelectionCriteria',
+            nest: (sourceSelectionCriteria!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (status != null) {
+          builder.element('Status', nest: status);
+        }
       },
     );
     return builder.buildDocument();
@@ -3182,8 +4091,16 @@ class ReplicationRuleAndOperator {
     builder.element(
       'ReplicationRuleAndOperator',
       nest: () {
-        builder.element('Prefix', nest: prefix);
-        builder.element('Tags', nest: tags!.toXml());
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (tags != null) {
+          builder.element(
+            'Tags',
+            nest: (tags!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -3211,9 +4128,23 @@ class ReplicationRuleFilter {
     builder.element(
       'ReplicationRuleFilter',
       nest: () {
-        builder.element('And', nest: and!.toXml());
-        builder.element('Prefix', nest: prefix);
-        builder.element('Tag', nest: tag!.toXml());
+        if (and != null) {
+          builder.element(
+            'And',
+            nest: (and!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (tag != null) {
+          builder.element(
+            'Tag',
+            nest: (tag!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -3243,8 +4174,16 @@ class ReplicationTime {
     builder.element(
       'ReplicationTime',
       nest: () {
-        builder.element('Status', nest: status);
-        builder.element('Time', nest: time!.toXml());
+        if (status != null) {
+          builder.element('Status', nest: status);
+        }
+
+        if (time != null) {
+          builder.element(
+            'Time',
+            nest: (time!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -3262,7 +4201,7 @@ class ReplicationTimeValue {
   ReplicationTimeValue(this.minutes);
 
   ReplicationTimeValue.fromXml(XmlElement? xml) {
-    minutes = int.tryParse(getProp(xml, 'Minutes')!.text);
+    minutes = int.tryParse(getProp(xml, 'Minutes')?.text ?? '');
   }
 
   XmlNode toXml() {
@@ -3270,7 +4209,9 @@ class ReplicationTimeValue {
     builder.element(
       'ReplicationTimeValue',
       nest: () {
-        builder.element('Minutes', nest: minutes.toString());
+        if (minutes != null) {
+          builder.element('Minutes', nest: minutes.toString());
+        }
       },
     );
     return builder.buildDocument();
@@ -3284,7 +4225,7 @@ class ReplicationTimeValue {
 class RequestPaymentConfiguration {
   RequestPaymentConfiguration(this.payer);
 
-  RequestPaymentConfiguration.fromXml(XmlElement xml) {
+  RequestPaymentConfiguration.fromXml(XmlElement? xml) {
     payer = getProp(xml, 'Payer')?.text;
   }
 
@@ -3293,7 +4234,9 @@ class RequestPaymentConfiguration {
     builder.element(
       'RequestPaymentConfiguration',
       nest: () {
-        builder.element('Payer', nest: payer);
+        if (payer != null) {
+          builder.element('Payer', nest: payer);
+        }
       },
     );
     return builder.buildDocument();
@@ -3307,7 +4250,7 @@ class RequestPaymentConfiguration {
 class RequestProgress {
   RequestProgress(this.enabled);
 
-  RequestProgress.fromXml(XmlElement xml) {
+  RequestProgress.fromXml(XmlElement? xml) {
     enabled = getProp(xml, 'Enabled')?.text.toUpperCase() == 'TRUE';
   }
 
@@ -3316,7 +4259,9 @@ class RequestProgress {
     builder.element(
       'RequestProgress',
       nest: () {
-        builder.element('Enabled', nest: enabled! ? 'TRUE' : 'FALSE');
+        if (enabled != null) {
+          builder.element('Enabled', nest: enabled! ? 'TRUE' : 'FALSE');
+        }
       },
     );
     return builder.buildDocument();
@@ -3338,8 +4283,8 @@ class RestoreRequest {
     this.type,
   );
 
-  RestoreRequest.fromXml(XmlElement xml) {
-    days = int.tryParse(getProp(xml, 'Days')!.text);
+  RestoreRequest.fromXml(XmlElement? xml) {
+    days = int.tryParse(getProp(xml, 'Days')?.text ?? '');
     description = getProp(xml, 'Description')?.text;
     glacierJobParameters = GlacierJobParameters.fromXml(
       getProp(xml, 'GlacierJobParameters'),
@@ -3357,16 +4302,45 @@ class RestoreRequest {
     builder.element(
       'RestoreRequest',
       nest: () {
-        builder.element('Days', nest: days.toString());
-        builder.element('Description', nest: description);
-        builder.element(
-          'GlacierJobParameters',
-          nest: glacierJobParameters!.toXml(),
-        );
-        builder.element('OutputLocation', nest: outputLocation!.toXml());
-        builder.element('SelectParameters', nest: selectParameters!.toXml());
-        builder.element('Tier', nest: tier);
-        builder.element('Type', nest: type);
+        if (days != null) {
+          builder.element('Days', nest: days.toString());
+        }
+
+        if (description != null) {
+          builder.element('Description', nest: description);
+        }
+
+        if (glacierJobParameters != null) {
+          builder.element(
+            'GlacierJobParameters',
+            nest: (glacierJobParameters!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (outputLocation != null) {
+          builder.element(
+            'OutputLocation',
+            nest: (outputLocation!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (selectParameters != null) {
+          builder.element(
+            'SelectParameters',
+            nest:
+                (selectParameters!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (tier != null) {
+          builder.element('Tier', nest: tier);
+        }
+
+        if (type != null) {
+          builder.element('Type', nest: type);
+        }
       },
     );
     return builder.buildDocument();
@@ -3408,8 +4382,19 @@ class RoutingRule {
     builder.element(
       'RoutingRule',
       nest: () {
-        builder.element('Condition', nest: condition!.toXml());
-        builder.element('Redirect', nest: redirect!.toXml());
+        if (condition != null) {
+          builder.element(
+            'Condition',
+            nest: (condition!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (redirect != null) {
+          builder.element(
+            'Redirect',
+            nest: (redirect!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -3457,23 +4442,58 @@ class Rule {
     builder.element(
       'Rule',
       nest: () {
-        builder.element(
-          'AbortIncompleteMultipartUpload',
-          nest: abortIncompleteMultipartUpload!.toXml(),
-        );
-        builder.element('Expiration', nest: expiration!.toXml());
-        builder.element('ID', nest: iD);
-        builder.element(
-          'NoncurrentVersionExpiration',
-          nest: noncurrentVersionExpiration!.toXml(),
-        );
-        builder.element(
-          'NoncurrentVersionTransition',
-          nest: noncurrentVersionTransition!.toXml(),
-        );
-        builder.element('Prefix', nest: prefix);
-        builder.element('Status', nest: status);
-        builder.element('Transition', nest: transition!.toXml());
+        if (abortIncompleteMultipartUpload != null) {
+          builder.element(
+            'AbortIncompleteMultipartUpload',
+            nest: (abortIncompleteMultipartUpload!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (expiration != null) {
+          builder.element(
+            'Expiration',
+            nest: (expiration!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (iD != null) {
+          builder.element('ID', nest: iD);
+        }
+
+        if (noncurrentVersionExpiration != null) {
+          builder.element(
+            'NoncurrentVersionExpiration',
+            nest: (noncurrentVersionExpiration!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (noncurrentVersionTransition != null) {
+          builder.element(
+            'NoncurrentVersionTransition',
+            nest: (noncurrentVersionTransition!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (status != null) {
+          builder.element('Status', nest: status);
+        }
+
+        if (transition != null) {
+          builder.element(
+            'Transition',
+            nest: (transition!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -3517,7 +4537,12 @@ class S3KeyFilter {
     builder.element(
       'S3KeyFilter',
       nest: () {
-        builder.element('FilterRules', nest: filterRules!.toXml());
+        if (filterRules != null) {
+          builder.element(
+            'FilterRules',
+            nest: (filterRules!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -3556,14 +4581,51 @@ class S3Location {
     builder.element(
       'S3Location',
       nest: () {
-        builder.element('AccessControlList', nest: accessControlList!.toXml());
-        builder.element('BucketName', nest: bucketName);
-        builder.element('CannedACL', nest: cannedACL);
-        builder.element('Encryption', nest: encryption!.toXml());
-        builder.element('Prefix', nest: prefix);
-        builder.element('StorageClass', nest: storageClass);
-        builder.element('Tagging', nest: tagging!.toXml());
-        builder.element('UserMetadata', nest: userMetadata!.toXml());
+        if (accessControlList != null) {
+          builder.element(
+            'AccessControlList',
+            nest: (accessControlList!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (bucketName != null) {
+          builder.element('BucketName', nest: bucketName);
+        }
+
+        if (cannedACL != null) {
+          builder.element('CannedACL', nest: cannedACL);
+        }
+
+        if (encryption != null) {
+          builder.element(
+            'Encryption',
+            nest: (encryption!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (storageClass != null) {
+          builder.element('StorageClass', nest: storageClass);
+        }
+
+        if (tagging != null) {
+          builder.element(
+            'Tagging',
+            nest: (tagging!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (userMetadata != null) {
+          builder.element(
+            'UserMetadata',
+            nest: (userMetadata!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -3598,9 +4660,9 @@ class S3Location {
 class ScanRange {
   ScanRange(this.end, this.start);
 
-  ScanRange.fromXml(XmlElement xml) {
-    end = int.tryParse(getProp(xml, 'End')!.text);
-    start = int.tryParse(getProp(xml, 'Start')!.text);
+  ScanRange.fromXml(XmlElement? xml) {
+    end = int.tryParse(getProp(xml, 'End')?.text ?? '');
+    start = int.tryParse(getProp(xml, 'Start')?.text ?? '');
   }
 
   XmlNode toXml() {
@@ -3608,8 +4670,13 @@ class ScanRange {
     builder.element(
       'ScanRange',
       nest: () {
-        builder.element('End', nest: end.toString());
-        builder.element('Start', nest: start.toString());
+        if (end != null) {
+          builder.element('End', nest: end.toString());
+        }
+
+        if (start != null) {
+          builder.element('Start', nest: start.toString());
+        }
       },
     );
     return builder.buildDocument();
@@ -3632,7 +4699,7 @@ class SelectObjectContentEventStream {
     this.stats,
   );
 
-  SelectObjectContentEventStream.fromXml(XmlElement xml) {
+  SelectObjectContentEventStream.fromXml(XmlElement? xml) {
     cont = ContinuationEvent.fromXml(getProp(xml, 'Cont'));
     end = EndEvent.fromXml(getProp(xml, 'End'));
     progress = ProgressEvent.fromXml(getProp(xml, 'Progress'));
@@ -3645,11 +4712,40 @@ class SelectObjectContentEventStream {
     builder.element(
       'SelectObjectContentEventStream',
       nest: () {
-        builder.element('Cont', nest: cont!.toXml());
-        builder.element('End', nest: end!.toXml());
-        builder.element('Progress', nest: progress!.toXml());
-        builder.element('Records', nest: records!.toXml());
-        builder.element('Stats', nest: stats!.toXml());
+        if (cont != null) {
+          builder.element(
+            'Cont',
+            nest: (cont!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (end != null) {
+          builder.element(
+            'End',
+            nest: (end!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (progress != null) {
+          builder.element(
+            'Progress',
+            nest: (progress!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (records != null) {
+          builder.element(
+            'Records',
+            nest: (records!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (stats != null) {
+          builder.element(
+            'Stats',
+            nest: (stats!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -3696,16 +4792,31 @@ class SelectParameters {
     builder.element(
       'SelectParameters',
       nest: () {
-        builder.element('Expression', nest: expression);
-        builder.element('ExpressionType', nest: expressionType);
-        builder.element(
-          'InputSerialization',
-          nest: inputSerialization!.toXml(),
-        );
-        builder.element(
-          'OutputSerialization',
-          nest: outputSerialization!.toXml(),
-        );
+        if (expression != null) {
+          builder.element('Expression', nest: expression);
+        }
+
+        if (expressionType != null) {
+          builder.element('ExpressionType', nest: expressionType);
+        }
+
+        if (inputSerialization != null) {
+          builder.element(
+            'InputSerialization',
+            nest: (inputSerialization!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (outputSerialization != null) {
+          builder.element(
+            'OutputSerialization',
+            nest: (outputSerialization!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -3738,8 +4849,13 @@ class ServerSideEncryptionByDefault {
     builder.element(
       'ServerSideEncryptionByDefault',
       nest: () {
-        builder.element('KMSMasterKeyID', nest: kMSMasterKeyID);
-        builder.element('SSEAlgorithm', nest: sSEAlgorithm);
+        if (kMSMasterKeyID != null) {
+          builder.element('KMSMasterKeyID', nest: kMSMasterKeyID);
+        }
+
+        if (sSEAlgorithm != null) {
+          builder.element('SSEAlgorithm', nest: sSEAlgorithm);
+        }
       },
     );
     return builder.buildDocument();
@@ -3756,7 +4872,7 @@ class ServerSideEncryptionByDefault {
 class ServerSideEncryptionConfiguration {
   ServerSideEncryptionConfiguration(this.rules);
 
-  ServerSideEncryptionConfiguration.fromXml(XmlElement xml) {
+  ServerSideEncryptionConfiguration.fromXml(XmlElement? xml) {
     rules = ServerSideEncryptionRule.fromXml(getProp(xml, 'Rules'));
   }
 
@@ -3765,7 +4881,12 @@ class ServerSideEncryptionConfiguration {
     builder.element(
       'ServerSideEncryptionConfiguration',
       nest: () {
-        builder.element('Rules', nest: rules!.toXml());
+        if (rules != null) {
+          builder.element(
+            'Rules',
+            nest: (rules!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -3790,10 +4911,14 @@ class ServerSideEncryptionRule {
     builder.element(
       'ServerSideEncryptionRule',
       nest: () {
-        builder.element(
-          'ApplyServerSideEncryptionByDefault',
-          nest: applyServerSideEncryptionByDefault!.toXml(),
-        );
+        if (applyServerSideEncryptionByDefault != null) {
+          builder.element(
+            'ApplyServerSideEncryptionByDefault',
+            nest: (applyServerSideEncryptionByDefault!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -3818,10 +4943,14 @@ class SourceSelectionCriteria {
     builder.element(
       'SourceSelectionCriteria',
       nest: () {
-        builder.element(
-          'SseKmsEncryptedObjects',
-          nest: sseKmsEncryptedObjects!.toXml(),
-        );
+        if (sseKmsEncryptedObjects != null) {
+          builder.element(
+            'SseKmsEncryptedObjects',
+            nest: (sseKmsEncryptedObjects!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -3844,7 +4973,9 @@ class SSEKMS {
     builder.element(
       'SSEKMS',
       nest: () {
-        builder.element('KeyId', nest: keyId);
+        if (keyId != null) {
+          builder.element('KeyId', nest: keyId);
+        }
       },
     );
     return builder.buildDocument();
@@ -3867,7 +4998,9 @@ class SseKmsEncryptedObjects {
     builder.element(
       'SseKmsEncryptedObjects',
       nest: () {
-        builder.element('Status', nest: status);
+        if (status != null) {
+          builder.element('Status', nest: status);
+        }
       },
     );
     return builder.buildDocument();
@@ -3895,9 +5028,9 @@ class Stats {
   Stats(this.bytesProcessed, this.bytesReturned, this.bytesScanned);
 
   Stats.fromXml(XmlElement? xml) {
-    bytesProcessed = int.tryParse(getProp(xml, 'BytesProcessed')!.text);
-    bytesReturned = int.tryParse(getProp(xml, 'BytesReturned')!.text);
-    bytesScanned = int.tryParse(getProp(xml, 'BytesScanned')!.text);
+    bytesProcessed = int.tryParse(getProp(xml, 'BytesProcessed')?.text ?? '');
+    bytesReturned = int.tryParse(getProp(xml, 'BytesReturned')?.text ?? '');
+    bytesScanned = int.tryParse(getProp(xml, 'BytesScanned')?.text ?? '');
   }
 
   XmlNode toXml() {
@@ -3905,9 +5038,17 @@ class Stats {
     builder.element(
       'Stats',
       nest: () {
-        builder.element('BytesProcessed', nest: bytesProcessed.toString());
-        builder.element('BytesReturned', nest: bytesReturned.toString());
-        builder.element('BytesScanned', nest: bytesScanned.toString());
+        if (bytesProcessed != null) {
+          builder.element('BytesProcessed', nest: bytesProcessed.toString());
+        }
+
+        if (bytesReturned != null) {
+          builder.element('BytesReturned', nest: bytesReturned.toString());
+        }
+
+        if (bytesScanned != null) {
+          builder.element('BytesScanned', nest: bytesScanned.toString());
+        }
       },
     );
     return builder.buildDocument();
@@ -3936,7 +5077,12 @@ class StatsEvent {
     builder.element(
       'StatsEvent',
       nest: () {
-        builder.element('Details', nest: details!.toXml());
+        if (details != null) {
+          builder.element(
+            'Details',
+            nest: (details!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -3961,7 +5107,12 @@ class StorageClassAnalysis {
     builder.element(
       'StorageClassAnalysis',
       nest: () {
-        builder.element('DataExport', nest: dataExport!.toXml());
+        if (dataExport != null) {
+          builder.element(
+            'DataExport',
+            nest: (dataExport!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -3987,8 +5138,16 @@ class StorageClassAnalysisDataExport {
     builder.element(
       'StorageClassAnalysisDataExport',
       nest: () {
-        builder.element('Destination', nest: destination!.toXml());
-        builder.element('OutputSchemaVersion', nest: outputSchemaVersion);
+        if (destination != null) {
+          builder.element(
+            'Destination',
+            nest: (destination!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (outputSchemaVersion != null) {
+          builder.element('OutputSchemaVersion', nest: outputSchemaVersion);
+        }
       },
     );
     return builder.buildDocument();
@@ -4015,8 +5174,13 @@ class Tag {
     builder.element(
       'Tag',
       nest: () {
-        builder.element('Key', nest: key);
-        builder.element('Value', nest: value);
+        if (key != null) {
+          builder.element('Key', nest: key);
+        }
+
+        if (value != null) {
+          builder.element('Value', nest: value);
+        }
       },
     );
     return builder.buildDocument();
@@ -4042,7 +5206,12 @@ class Tagging {
     builder.element(
       'Tagging',
       nest: () {
-        builder.element('TagSet', nest: tagSet!.toXml());
+        if (tagSet != null) {
+          builder.element(
+            'TagSet',
+            nest: (tagSet!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();
@@ -4066,8 +5235,16 @@ class TargetGrant {
     builder.element(
       'TargetGrant',
       nest: () {
-        builder.element('Grantee', nest: grantee!.toXml());
-        builder.element('Permission', nest: permission);
+        if (grantee != null) {
+          builder.element(
+            'Grantee',
+            nest: (grantee!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (permission != null) {
+          builder.element('Permission', nest: permission);
+        }
       },
     );
     return builder.buildDocument();
@@ -4085,7 +5262,7 @@ class TopicConfiguration {
   TopicConfiguration(this.events, this.filter, this.id, this.topicArn);
 
   TopicConfiguration.fromXml(XmlElement? xml) {
-    events = getProp(xml, 'Events')?.text;
+    events = eventsFromXml(getProp(xml, 'Events'));
     filter = NotificationConfigurationFilter.fromXml(getProp(xml, 'Filter'));
     id = getProp(xml, 'Id')?.text;
     topicArn = getProp(xml, 'TopicArn')?.text;
@@ -4096,17 +5273,37 @@ class TopicConfiguration {
     builder.element(
       'TopicConfiguration',
       nest: () {
-        builder.element('Events', nest: events);
-        builder.element('Filter', nest: filter!.toXml());
-        builder.element('Id', nest: id);
-        builder.element('TopicArn', nest: topicArn);
+        if (events != null) {
+          builder.element(
+            'Events',
+            nest: () {
+              for (final event in events!) {
+                builder.element('Event', nest: event);
+              }
+            },
+          );
+        }
+        if (filter != null) {
+          builder.element(
+            'Filter',
+            nest: (filter!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (id != null) {
+          builder.element('Id', nest: id);
+        }
+
+        if (topicArn != null) {
+          builder.element('TopicArn', nest: topicArn);
+        }
       },
     );
     return builder.buildDocument();
   }
 
   /// The Amazon S3 bucket event about which to send notifications. For more information, see Supported Event Types in the Amazon Simple Storage Service Developer Guide.
-  String? events;
+  List<String>? events;
 
   /// Specifies object key name filtering rules. For information about key name filtering, see Configuring Event Notifications in the Amazon Simple Storage Service Developer Guide.
   NotificationConfigurationFilter? filter;
@@ -4134,10 +5331,21 @@ class TopicConfigurationDeprecated {
     builder.element(
       'TopicConfigurationDeprecated',
       nest: () {
-        builder.element('Event', nest: event);
-        builder.element('Events', nest: events);
-        builder.element('Id', nest: id);
-        builder.element('Topic', nest: topic);
+        if (event != null) {
+          builder.element('Event', nest: event);
+        }
+
+        if (events != null) {
+          builder.element('Events', nest: events);
+        }
+
+        if (id != null) {
+          builder.element('Id', nest: id);
+        }
+
+        if (topic != null) {
+          builder.element('Topic', nest: topic);
+        }
       },
     );
     return builder.buildDocument();
@@ -4161,8 +5369,8 @@ class Transition {
   Transition(this.date, this.days, this.storageClass);
 
   Transition.fromXml(XmlElement? xml) {
-    date = DateTime.parse(getProp(xml, 'Date')!.text);
-    days = int.tryParse(getProp(xml, 'Days')!.text);
+    date = DateTime.tryParse(getProp(xml, 'Date')?.text ?? '');
+    days = int.tryParse(getProp(xml, 'Days')?.text ?? '');
     storageClass = getProp(xml, 'StorageClass')?.text;
   }
 
@@ -4171,9 +5379,17 @@ class Transition {
     builder.element(
       'Transition',
       nest: () {
-        builder.element('Date', nest: date!.toIso8601String());
-        builder.element('Days', nest: days.toString());
-        builder.element('StorageClass', nest: storageClass);
+        if (date != null) {
+          builder.element('Date', nest: date!.toIso8601String());
+        }
+
+        if (days != null) {
+          builder.element('Days', nest: days.toString());
+        }
+
+        if (storageClass != null) {
+          builder.element('StorageClass', nest: storageClass);
+        }
       },
     );
     return builder.buildDocument();
@@ -4193,7 +5409,7 @@ class Transition {
 class VersioningConfiguration {
   VersioningConfiguration(this.mFADelete, this.status);
 
-  VersioningConfiguration.fromXml(XmlElement xml) {
+  VersioningConfiguration.fromXml(XmlElement? xml) {
     mFADelete = getProp(xml, 'MFADelete')?.text;
     status = getProp(xml, 'Status')?.text;
   }
@@ -4203,8 +5419,13 @@ class VersioningConfiguration {
     builder.element(
       'VersioningConfiguration',
       nest: () {
-        builder.element('MFADelete', nest: mFADelete);
-        builder.element('Status', nest: status);
+        if (mFADelete != null) {
+          builder.element('MFADelete', nest: mFADelete);
+        }
+
+        if (status != null) {
+          builder.element('Status', nest: status);
+        }
       },
     );
     return builder.buildDocument();
@@ -4226,7 +5447,7 @@ class WebsiteConfiguration {
     this.routingRules,
   );
 
-  WebsiteConfiguration.fromXml(XmlElement xml) {
+  WebsiteConfiguration.fromXml(XmlElement? xml) {
     errorDocument = ErrorDocument.fromXml(getProp(xml, 'ErrorDocument'));
     indexDocument = IndexDocument.fromXml(getProp(xml, 'IndexDocument'));
     redirectAllRequestsTo = RedirectAllRequestsTo.fromXml(
@@ -4240,13 +5461,35 @@ class WebsiteConfiguration {
     builder.element(
       'WebsiteConfiguration',
       nest: () {
-        builder.element('ErrorDocument', nest: errorDocument!.toXml());
-        builder.element('IndexDocument', nest: indexDocument!.toXml());
-        builder.element(
-          'RedirectAllRequestsTo',
-          nest: redirectAllRequestsTo!.toXml(),
-        );
-        builder.element('RoutingRules', nest: routingRules!.toXml());
+        if (errorDocument != null) {
+          builder.element(
+            'ErrorDocument',
+            nest: (errorDocument!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (indexDocument != null) {
+          builder.element(
+            'IndexDocument',
+            nest: (indexDocument!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (redirectAllRequestsTo != null) {
+          builder.element(
+            'RedirectAllRequestsTo',
+            nest: (redirectAllRequestsTo!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (routingRules != null) {
+          builder.element(
+            'RoutingRules',
+            nest: (routingRules!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
       },
     );
     return builder.buildDocument();

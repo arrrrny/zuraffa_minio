@@ -235,21 +235,36 @@ class Minio {
 
   http.Client? _httpClient;
 
+  /// Whether the client of this instance was created here.
+  ///
+  /// A client that was passed to the constructor belongs to the caller and is
+  /// never closed by [close].
+  bool _ownsHttpClient = false;
+
   /// The HTTP client every request is sent through.
   ///
   /// A client can be supplied to the constructor to take control of
   /// connection pooling, proxies, TLS configuration or cancellation
   /// (upstream issues #85, #45, #80, #93). When none is supplied a default
   /// one is created lazily and owned by this instance.
-  http.Client get httpClient => _httpClient ??= http.Client();
+  http.Client get httpClient {
+    if (_httpClient == null) {
+      _httpClient = http.Client();
+      _ownsHttpClient = true;
+    }
+    return _httpClient!;
+  }
 
   /// Releases the resources held by the underlying HTTP client.
   ///
   /// Only a client created by this instance is closed; a client passed to the
   /// constructor stays the caller's responsibility.
   void close() {
-    _httpClient?.close();
-    _httpClient = null;
+    if (_ownsHttpClient) {
+      _httpClient?.close();
+      _httpClient = null;
+      _ownsHttpClient = false;
+    }
   }
 
   /// Remembers the region a bucket really lives in.
@@ -1375,7 +1390,9 @@ class Minio {
       object: object,
       headers: headers,
       queries: {'partNumber': '$partNumber', 'uploadId': uploadId},
-      payload: data,
+      // The request only carries a `Uint8List`, so a plain list of bytes is
+      // copied into one instead of being rejected.
+      payload: Uint8List.fromList(data),
     );
 
     validate(resp);

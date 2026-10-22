@@ -340,12 +340,14 @@ class MinioClient {
       if (isGlobalAmazonEndpoint(hostName)) {
         hostName = getS3Endpoint(effectiveRegion);
       }
-      // Virtual host style is the documented default for Amazon endpoints
-      // ("pathStyle ... for non AWS endpoints"); upstream always fell back to
-      // path style because it tested the already-regionalized host.
-      pathStyle =
-          minio.pathStyle ??
-          !isVirtualHostStyle(hostName, effectiveSSL, bucket);
+      // The default stays the one upstream used: path style. Upstream tested
+      // the endpoint after it had been regionalized, so its Amazon check
+      // never matched and every Amazon request went out as
+      // `https://s3-<region>.amazonaws.com/<bucket>/<key>`. The fork keeps
+      // that layout, so a migration is an import swap and not a change of
+      // the requests on the wire. Virtual host style is one setting away:
+      // `pathStyle: false`.
+      pathStyle = minio.pathStyle ?? true;
     }
 
     if (!pathStyle) {

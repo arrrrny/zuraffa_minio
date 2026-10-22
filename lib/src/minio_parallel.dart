@@ -56,7 +56,13 @@ class CountingSemaphore {
 
 /// The byte ranges of an object of [totalBytes] bytes, cut into chunks of at
 /// most [chunkSize].
+///
+/// [chunkSize] must be positive. A chunk size of zero would never advance the
+/// offset, so the planner would run forever.
 List<List<int>> planRanges(int totalBytes, int chunkSize) {
+  if (chunkSize <= 0) {
+    throw ArgumentError.value(chunkSize, 'chunkSize', 'must be positive');
+  }
   final ranges = <List<int>>[];
   for (var offset = 0; offset < totalBytes; offset += chunkSize) {
     final end = (offset + chunkSize) < totalBytes
@@ -130,8 +136,12 @@ Future<MinioByteStream> fetchInParallel({
 
     try {
       await Future.wait(futures);
-    } catch (_) {
+    } catch (error, stack) {
       failed = true;
+      // The error goes to the consumer. A download that lost a range must not
+      // look like a complete one: the stream would end normally and the
+      // caller would have no way of telling the difference.
+      controller.addError(error, stack);
     }
 
     if (failed) {
