@@ -29,15 +29,18 @@ class _Semaphore {
     }
     final completer = Completer<void>();
     _waiters.add(completer);
+    // The slot is handed over by [release], so the count is already right
+    // when this returns.
     await completer.future;
-    _inFlight++;
   }
 
   void release() {
-    _inFlight--;
     if (_waiters.isNotEmpty) {
+      // Hand the slot straight over to the next waiter.
       _waiters.removeAt(0).complete();
+      return;
     }
+    _inFlight--;
   }
 }
 

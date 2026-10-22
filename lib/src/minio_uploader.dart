@@ -116,6 +116,16 @@ class MinioUploader implements StreamConsumer<Uint8List> {
   Future<void> _addStreamParallel(Stream<Uint8List> stream) async {
     final inFlight = <Future<void>>[];
 
+    // `Object` and `Error` are shadowed in this library by the model classes
+    // of the same name, so the failure is kept in a `dynamic`.
+    dynamic failure;
+
+    void rethrowFailure() {
+      final error = failure;
+      if (error == null) return;
+      throw error;
+    }
+
     await for (var chunk in stream) {
       if (_partNumber == 1 && chunk.length < partSize) {
         // The object fits in a single request, so there is nothing to
@@ -147,7 +157,15 @@ class MinioUploader implements StreamConsumer<Uint8List> {
         'uploadId': _uploadId,
       };
 
-      final future = _uploadPart(chunk, partNumber, queries);
+      // The failure of a part is remembered instead of thrown, so the other
+      // parts that are still in flight do not end up as unhandled errors.
+      final future = () async {
+        try {
+          await _uploadPart(chunk, partNumber, queries);
+        } catch (error) {
+          failure ??= error;
+        }
+      }();
       inFlight.add(future);
 
       if (inFlight.length >= maxParallelUploads) {
@@ -155,10 +173,12 @@ class MinioUploader implements StreamConsumer<Uint8List> {
         // awaited first, so a failure surfaces in the order the parts were
         // started.
         await inFlight.removeAt(0);
+        rethrowFailure();
       }
     }
 
     await Future.wait(inFlight);
+    rethrowFailure();
   }
 
   Future<void> _uploadPart(
