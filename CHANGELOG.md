@@ -1,7 +1,8 @@
 # 0.2.5
 
-The findings of the review of the pull request of the fork, and the fixes of
-the pool that applied them.
+Restores the upstream constructor with its required credentials, writes the
+notification configuration shape a MinIO server really speaks, and bounds the
+parallel download's buffer.
 
 **Breaking for the users of 0.2.4** — the constructor is the one of the
 upstream package again:
@@ -10,7 +11,9 @@ upstream package again:
   they were optional, so a client that forgot them signed every request with
   an empty key and was anonymous without saying so. A client that resolves
   its own credentials calls `Minio.withCredentialsProvider(...)` now, which
-  keeps the two ways apart instead of mixing them in one constructor.
+  needs no placeholder keys. The primary constructor still takes a
+  `credentialsProvider`; once one resolves, it takes precedence over the
+  static keys the client was built with.
 - the notification configuration reads and writes the shape a MinIO server
   really speaks: the configurations are the direct children of
   `<NotificationConfiguration>`, the destination is `<Queue>`, `<Topic>` or
@@ -24,8 +27,9 @@ upstream package again:
   without a bound.
 - a `host` override that names a global Amazon endpoint is not discarded
   any more. Only an endpoint that was not overridden is regionalized.
-- the generator of the models reproduces the committed file again, and a test
-  guards against the drift between the two.
+- the committed model file carries the generator's header again, and the
+  tests guard that much. The model list and the doc comments follow the live
+  AWS API documentation, so regenerating adds whatever AWS documents today.
 - the test groups remove their buckets and their objects again, so a run of
   the suite leaves nothing behind on the server.
 - the workflow of the tests picks the MinIO binary for the platform of the
