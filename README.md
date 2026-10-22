@@ -58,6 +58,20 @@ What the fork adds on top:
 
 ## Usage
 
+### Upgrading from 0.2.4
+
+`Minio(...)` requires `accessKey` and `secretKey` again. A 0.2.4 client that
+omitted them no longer compiles, instead of signing every request with an empty
+key and staying anonymous without saying so. A client that resolves its own
+credentials calls `Minio.withCredentialsProvider(...)`, which needs no
+placeholder keys; once its provider resolves, those credentials take precedence
+over any static keys the client was built with.
+
+The constructor change shipped in a patch release (0.2.5), so `^0.2.4` resolves
+it and a `dart pub upgrade` moves you onto it. Pin `0.2.4` to stay on the old
+constructor, or depend on `^0.2.5` to adopt the new one. The next breaking
+change ships as 0.3.0.
+
 ### Initialize the client
 
 **A local MinIO server**

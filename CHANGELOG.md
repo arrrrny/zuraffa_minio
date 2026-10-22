@@ -1,3 +1,43 @@
+# 0.2.5
+
+Restores the upstream constructor with its required credentials, writes the
+notification configuration shape a MinIO server really speaks, and bounds the
+parallel download's buffer.
+
+**Breaking for the users of 0.2.4** — the constructor is the one of the
+upstream package again:
+
+- `Minio(...)` asks for the `accessKey` and the `secretKey` again. In 0.2.4
+  they were optional, so a client that forgot them signed every request with
+  an empty key and was anonymous without saying so. A client that resolves
+  its own credentials calls `Minio.withCredentialsProvider(...)` now, which
+  needs no placeholder keys. The primary constructor still takes a
+  `credentialsProvider`; once one resolves, it takes precedence over the
+  static keys the client was built with.
+- the notification configuration reads and writes the shape a MinIO server
+  really speaks: the configurations are the direct children of
+  `<NotificationConfiguration>`, the destination is `<Queue>`, `<Topic>` or
+  `<CloudFunction>`, and the events are repeated `<Event>` elements. The
+  older forms are still read, so a server that answers with them keeps
+  working. The 0.2.4 entry described the wrapper element; that was wrong.
+- `getObject` rejects a chunk size of zero at the entry point, before the
+  size of the object is fetched over the network.
+- a parallel download buffers at most `parallelism` ranges ahead of the head
+  of the object. Before, the ranges that came back early were buffered
+  without a bound.
+- a `host` override that names a global Amazon endpoint is not discarded
+  any more. Only an endpoint that was not overridden is regionalized.
+- the committed model file carries the generator's header again, and the
+  tests guard that much. The model list and the doc comments follow the live
+  AWS API documentation, so regenerating adds whatever AWS documents today.
+- the test groups remove their buckets and their objects again, so a run of
+  the suite leaves nothing behind on the server.
+- the workflow of the tests picks the MinIO binary for the platform of the
+  runner, and the server no longer holds the step open: the tests run
+  against a server that is really there.
+
+---
+
 # 0.2.4
 
 The findings of the review of the pull request of the fork.
