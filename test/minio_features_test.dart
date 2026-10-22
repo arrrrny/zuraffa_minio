@@ -134,6 +134,30 @@ Future<void> main() async {
 
       expect(calls, 1);
     });
+
+    test('the requests of a client with a provider are signed', () async {
+      var calls = 0;
+      final minio = Minio(
+        endPoint: MinioTestServer.endpoint,
+        port: MinioTestServer.port,
+        useSSL: MinioTestServer.useSSL,
+        region: MinioTestServer.region,
+        credentialsProvider: () async {
+          calls++;
+          return MinioCredentials(
+            accessKey: MinioTestServer.accessKey,
+            secretKey: MinioTestServer.secretKey,
+          );
+        },
+      );
+
+      // The server checks the signature, so a request that comes back proves
+      // the client signed it with the resolved credentials.
+      final buckets = await minio.listBuckets();
+
+      expect(buckets, isNotEmpty);
+      expect(calls, greaterThanOrEqualTo(1));
+    });
   });
 
   group('issue #12 — the url of an object', () {

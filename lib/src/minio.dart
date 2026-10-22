@@ -55,8 +55,8 @@ class Minio {
   /// Initializes a new client object.
   Minio({
     required this.endPoint,
-    required String accessKey,
-    required String secretKey,
+    String accessKey = '',
+    String secretKey = '',
     int? port,
     this.useSSL = true,
     String? sessionToken,

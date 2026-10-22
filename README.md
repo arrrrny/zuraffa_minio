@@ -123,10 +123,11 @@ await minio.fGetObject('my-bucket', 'picture.png', '/tmp/picture-copy.png');
 ### Presigned URLs
 
 ```dart
+// expires is a number of seconds
 final url = await minio.presignedGetObject(
   'my-bucket',
   'greeting.txt',
-  expires: const Duration(hours: 1),
+  expires: 3600,
 );
 ```
 
@@ -140,12 +141,15 @@ final url = await minio.presignedUrl(
   'GET',
   'my-bucket',
   'greeting.txt',
-  expires: const Duration(hours: 1),
+  expires: 3600,
   host: 'objects.example.com',
   port: 443,
   useSSL: true,
 );
 ```
+
+The override is used in the url **and** in the signature, so the two can never
+disagree.
 
 ### Temporary credentials
 
@@ -155,8 +159,7 @@ that returns fresh credentials when they are needed:
 ```dart
 final minio = Minio(
   endPoint: 's3.amazonaws.com',
-  accessKey: '',
-  secretKey: '',
+  region: 'eu-central-1',
   credentialsProvider: () async {
     final session = await assumeRoleWithWebIdentity();
     return MinioCredentials(
@@ -167,6 +170,12 @@ final minio = Minio(
   },
 );
 ```
+
+The provider is called before the first request is signed, and again whenever
+the credentials it returned are older than `credentialsTtl` (five minutes by
+default). `refreshCredentials()` forces a new resolution right away. The
+`accessKey`, `secretKey` and `sessionToken` getters always report the
+credentials the next request will be signed with.
 
 ### Cancelling
 
@@ -183,8 +192,12 @@ final minio = Minio(
 
 final upload = minio.putObject('my-bucket', 'big.bin', data);
 token.cancel();     // aborts the request that is in flight
-await upload;       // throws MinioRequestCancelledError
+await upload;       // the upload fails
 ```
+
+Cancelling closes the underlying HTTP client, so the request that is in flight
+is aborted. A request that has not been sent yet fails with a
+`MinioRequestCancelledError`.
 
 `minio.close()` aborts everything that is running as well.
 
@@ -310,6 +323,28 @@ run. The server can be pointed somewhere else:
 | `listIncompleteUploads` | `removeObjects` | | |
 | `listAllObjects` | `removeObjectsByPrefix` | | |
 | `listAllObjectsV2` | `objectUrl` | | |
+| | `initiateNewMultipartUpload` | | |
+| | `uploadPart` | | |
+| | `completeMultipartUpload` | | |
+| | `removeIncompleteUpload` | | |
+
+## What was added
+
+Every addition answers an open issue of the upstream package, so the issue
+tracker and the API stay traceable:
+
+| Issue | What was added |
+|---|---|
+| [#4](https://github.com/xtyxtyx/minio-dart/issues/4), [#20](https://github.com/xtyxtyx/minio-dart/issues/20) | `onProgress` on `getObject` and `getPartialObject` |
+| [#12](https://github.com/xtyxtyx/minio-dart/issues/12) | `objectUrl` |
+| [#35](https://github.com/xtyxtyx/minio-dart/issues/35), [#98](https://github.com/xtyxtyx/minio-dart/issues/98) | `putObject(maxParallelUploads:)` |
+| [#45](https://github.com/xtyxtyx/minio-dart/issues/45), [#85](https://github.com/xtyxtyx/minio-dart/issues/85), [#93](https://github.com/xtyxtyx/minio-dart/issues/93) | `MinioCancellationToken` and `MinioRequestCancelledError` |
+| [#80](https://github.com/xtyxtyx/minio-dart/issues/80) | `createTlsHttpClient` |
+| [#94](https://github.com/xtyxtyx/minio-dart/issues/94) | `MinioCredentials`, `credentialsProvider`, `refreshCredentials` |
+| [#99](https://github.com/xtyxtyx/minio-dart/issues/99) | `removeObjectsByPrefix` |
+| [#101](https://github.com/xtyxtyx/minio-dart/issues/101) | `host`, `port` and `useSSL` on the presigned calls |
+| [#102](https://github.com/xtyxtyx/minio-dart/issues/102) | `uploadPart` and the multipart example |
+| [#112](https://github.com/xtyxtyx/minio-dart/issues/112) | `getObject(parallelism:)` |
 
 ## License
 

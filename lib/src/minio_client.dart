@@ -108,7 +108,13 @@ class MinioResponse extends BaseResponse {
 
 class MinioClient {
   MinioClient(this.minio) {
-    anonymous = minio.accessKey.isEmpty && minio.secretKey.isEmpty;
+    // A client with a credentials provider signs with the credentials the
+    // provider resolves, so it is never anonymous — even before the first
+    // resolution (upstream issue #94).
+    anonymous =
+        minio.credentialsProvider == null &&
+        minio.accessKey.isEmpty &&
+        minio.secretKey.isEmpty;
     enableSHA256 = !anonymous && !minio.useSSL;
     port = minio.port;
   }

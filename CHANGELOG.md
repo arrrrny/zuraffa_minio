@@ -43,6 +43,8 @@ import 'package:zuraffa_minio/minio.dart';
 - `listParts` cast the document node to `XmlElement`, which is a `TypeError`
 - `listIncompleteUploads` failed as a whole when a single upload could not be
   inspected any more
+- a client with a `credentialsProvider` signed its requests anonymously: it
+  decided it was anonymous before the provider had resolved the credentials
 
 ## Added
 
@@ -60,6 +62,8 @@ import 'package:zuraffa_minio/minio.dart';
   through `onProgress`
 - #12 `objectUrl` returns the plain URL of an object
 - #99 `removeObjectsByPrefix` removes every object under a prefix
+- #102 `uploadPart` uploads a single part of a multipart upload, so an
+  application can drive the multipart upload itself
 - #112 `getObject` can fetch the object as concurrent byte ranges
 - #98 `putObject` can upload the parts of a multipart upload concurrently
 

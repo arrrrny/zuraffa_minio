@@ -38,19 +38,19 @@ and the fix is verified in this fork.
 | # | Issue | Disposition |
 |---|---|---|
 | 118 | Is this repository dead? | Answered — yes, now maintained here |
-| 112 | Parallel downloading | **Implemented** — `getObject(parallelism:)` |
+| 112 | Parallel downloading | **Implemented** — `getObject(parallelism:, chunkSize:)` |
 | 108 | `statObject` crashes on a null check | **Fixed** — a missing `content-length` no longer crashes |
 | 106 | Error when the path has a `+` sign | Stale — fixed in 3.5.8, verified by a test |
 | 104 | Wrap the Rust or Go implementation | Answered — no FFI, the pure Dart client stays |
-| 102 | MultipartUpload example | **Added** — `example/multipart_upload_example.dart` |
+| 102 | MultipartUpload example | **Added** — `example/multipart_upload_example.dart` and `uploadPart` |
 | 101 | Presigned URL host/port/scheme | **Implemented** — overrides on the presigned calls |
 | 100 | Image upload fails, namespace/access key | Answered — credentials and endpoint configuration |
 | 99 | Delete a folder and its data | **Implemented** — `removeObjectsByPrefix` |
-| 98 | Upload the parts in parallel | **Implemented** — `putObject(parallelism:)` |
+| 98 | Upload the parts in parallel | **Implemented** — `putObject(maxParallelUploads:)` |
 | 94 | Temporary credential renewal | **Implemented** — a credentials provider callback |
-| 93 | Switch from `http` to `dio` | Answered — instead the `http.Client` is injectable |
-| 85 | Cancel the request session | **Implemented** — `close()`, and the client is injectable |
-| 80 | Bypass the certificate check | Answered — through the injectable `http.Client` |
+| 93 | Switch from `http` to `dio` | Answered — the `http.Client` is injectable, and a `MinioCancellationToken` cancels the requests |
+| 85 | Cancel the request session | **Implemented** — a `MinioCancellationToken`, and `close()` |
+| 80 | Bypass the certificate check | **Implemented** — `createTlsHttpClient` |
 | 68 | Fix the more understandable document | **Fixed** — the examples that confused people |
 | 64 | Flutter web image upload example | **Added** — `example/web_upload_example.dart` |
 | 60 | Cannot upload large files on web in debug | Answered — the web constraints, and what to do |
@@ -68,7 +68,7 @@ and the fix is verified in this fork.
 | 35 | The upload speed is too slow | **Implemented** — as #98 and #112 |
 | 33 | `WRONG_VERSION_NUMBER` handshake error | Answered — the endpoint speaks plain HTTP |
 | 24 | The `assert(size)` issue | **Fixed** — a real check with a real message |
-| 20 | 上传进度监听 (upload progress) | **Implemented** — `getObject(onProgress:)` |
+| 20 | 上传进度监听 (upload progress) | **Implemented** — `getObject(onProgress:)`; the upload progress existed already |
 | 12 | Get the upload url instead of the etag | **Implemented** — `objectUrl(bucket, object)` |
 | 6 | Parse error when listening to notifications | **Fixed** — MinIO's XML notification format is parsed |
 | 4 | Progress callback | **Implemented** — as #20 |
@@ -123,8 +123,9 @@ the custom TLS configuration of #80.
 A user on a slow link wants the parts of a multipart upload to go out
 concurrently, and wants a large object to be fetched in ranges.
 
-**Independent test**: a multi-part object uploads with `parallelism: 4` and
-reads back byte-identical; a ranged download reassembles the original bytes.
+**Independent test**: a multi-part object uploads with `maxParallelUploads: 4`
+and reads back byte-identical; a ranged download with `parallelism: 4`
+reassembles the original bytes.
 
 ### User Story 6 - Read the issue tracker and find the answer (Priority: P2)
 
