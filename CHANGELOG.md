@@ -1,3 +1,17 @@
+# 0.2.2
+
+- the parallel transfers respect their limit exactly. The semaphore that caps
+  the number of requests in flight handed the slot over to a waiter and only
+  gave it back when no waiter was left, so `getObject(parallelism: n)` and
+  `putObject(maxParallelUploads: n)` could run `n + 1` requests at the same
+  time under contention.
+- the parallel multipart upload remembers the failure of a part instead of
+  letting it propagate. The parts that are still in flight no longer end up
+  as unhandled errors, and the first failure is rethrown once the bounded
+  wait is over.
+
+---
+
 # 0.2.1
 
 - the presigned calls resolve the credentials of a `credentialsProvider` before
