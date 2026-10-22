@@ -1,6 +1,6 @@
 name: zuraffa_minio
 description: A maintained fork of the minio package - a pure Dart client for MinIO and Amazon S3 compatible object storage.
-version: 0.2.0
+version: 0.2.1
 repository: https://github.com/arrrrny/zuraffa_minio
 issue_tracker: https://github.com/arrrrny/zuraffa_minio/issues
 homepage: https://github.com/arrrrny/zuraffa_minio

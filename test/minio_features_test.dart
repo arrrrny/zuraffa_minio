@@ -158,6 +158,22 @@ Future<void> main() async {
       expect(buckets, isNotEmpty);
       expect(calls, greaterThanOrEqualTo(1));
     });
+
+    test('a presigned url is signed with the resolved credentials', () async {
+      final minio = Minio(
+        endPoint: MinioTestServer.endpoint,
+        port: MinioTestServer.port,
+        useSSL: MinioTestServer.useSSL,
+        region: MinioTestServer.region,
+        credentialsProvider: () async =>
+            MinioCredentials(accessKey: 'AKIAPRESIGNED', secretKey: 'secret'),
+      );
+
+      final url = await minio.presignedGetObject('bucket', 'object');
+
+      // The access key is part of the credential scope of the signature.
+      expect(url, contains('AKIAPRESIGNED'));
+    });
   });
 
   group('issue #12 — the url of an object', () {

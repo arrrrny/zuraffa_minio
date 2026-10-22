@@ -1,3 +1,12 @@
+# 0.2.1
+
+- the presigned calls resolve the credentials of a `credentialsProvider` before
+  they sign, like every other request does. Without it a client that has only
+  a provider — no static keys — signed its presigned URLs with an empty
+  access key.
+
+---
+
 # 0.2.0
 
 The first release of `zuraffa_minio`, the maintained fork of the `minio`

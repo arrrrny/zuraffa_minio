@@ -1108,10 +1108,13 @@ class Minio {
       );
     }
 
+    // The policy is signed with the credentials the client signs with, so
+    // they have to be resolved before it is built (upstream issue #94).
+    await resolveCredentials();
+
     final region = await getBucketRegion(postPolicy.formData['bucket']!);
     var date = DateTime.now().toUtc();
     var dateStr = makeDateLong(date);
-
     if (postPolicy.policy['expiration'] == null) {
       // 'expiration' is mandatory field for S3.
       // Set default expiration date of 7 days.
@@ -1265,6 +1268,10 @@ class Minio {
     expires ??= expires = 24 * 60 * 60 * 7; // 7 days in seconds
     reqParams ??= {};
     requestDate ??= DateTime.now().toUtc();
+
+    // The signature is built from the credentials the client signs with, so
+    // they have to be resolved before it is computed (upstream issue #94).
+    await resolveCredentials();
 
     final region = await getBucketRegion(bucket);
     final request = _client.getBaseRequest(
