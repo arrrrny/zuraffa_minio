@@ -3,11 +3,11 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:http/http.dart';
-import 'package:minio/minio.dart';
-import 'package:minio/src/minio_helpers.dart';
-import 'package:minio/src/minio_s3.dart';
-import 'package:minio/src/minio_sign.dart';
-import 'package:minio/src/utils.dart';
+import 'package:zuraffa_minio/minio.dart';
+import 'package:zuraffa_minio/src/minio_helpers.dart';
+import 'package:zuraffa_minio/src/minio_s3.dart';
+import 'package:zuraffa_minio/src/minio_sign.dart';
+import 'package:zuraffa_minio/src/utils.dart';
 
 class MinioRequest extends StreamedRequest {
   MinioRequest(super.method, super.url, {this.onProgress});
@@ -78,20 +78,14 @@ class MinioResponse extends BaseResponse {
   /// Create a new HTTP response with a byte array body.
   MinioResponse.bytes(
     this.bodyBytes,
-    int statusCode, {
-    BaseRequest? request,
-    Map<String, String> headers = const {},
-    bool isRedirect = false,
-    bool persistentConnection = true,
-    String? reasonPhrase,
+    super.statusCode, {
+    super.request,
+    super.headers,
+    super.isRedirect,
+    super.persistentConnection,
+    super.reasonPhrase,
   }) : super(
-          statusCode,
           contentLength: bodyBytes.length,
-          request: request,
-          headers: headers,
-          isRedirect: isRedirect,
-          persistentConnection: persistentConnection,
-          reasonPhrase: reasonPhrase,
         );
 
   /// The bytes comprising the body of this response.

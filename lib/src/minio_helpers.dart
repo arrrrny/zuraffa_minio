@@ -3,10 +3,10 @@
 import 'package:convert/convert.dart';
 import 'package:http/http.dart';
 import 'package:mime/mime.dart' show lookupMimeType;
-import 'package:minio/src/minio_client.dart';
-import 'package:minio/src/minio_errors.dart';
-import 'package:minio/src/minio_models_generated.dart';
 import 'package:xml/xml.dart' as xml;
+import 'package:zuraffa_minio/src/minio_client.dart';
+import 'package:zuraffa_minio/src/minio_errors.dart';
+import 'package:zuraffa_minio/src/minio_models_generated.dart';
 
 bool isValidBucketName(String bucket) {
   if (bucket.length < 3 || bucket.length > 63) {

@@ -1,6 +1,6 @@
-import 'package:minio/models.dart';
-import 'package:minio/src/minio_client.dart';
-import 'package:minio/src/minio_helpers.dart';
+import 'package:zuraffa_minio/models.dart';
+import 'package:zuraffa_minio/src/minio_client.dart';
+import 'package:zuraffa_minio/src/minio_helpers.dart';
 
 class MinioError implements Exception {
   MinioError(this.message);

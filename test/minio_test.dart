@@ -1,15 +1,16 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:minio/io.dart';
-import 'package:minio/minio.dart';
-import 'package:minio/src/minio_models_generated.dart';
-import 'package:minio/src/utils.dart';
-import 'package:test/test.dart';
+import 'package:test/test.dart' hide setUpAll, tearDownAll, test;
+import 'package:zuraffa_minio/io.dart';
+import 'package:zuraffa_minio/minio.dart';
+import 'package:zuraffa_minio/src/minio_models_generated.dart';
+import 'package:zuraffa_minio/src/utils.dart';
 
 import 'helpers.dart';
 
-void main() {
+Future<void> main() async {
+  await detectMinioServer();
   testConstruct();
   testListBuckets();
   testBucketExists();

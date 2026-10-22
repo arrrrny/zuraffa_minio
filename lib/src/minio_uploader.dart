@@ -6,11 +6,11 @@ import 'dart:typed_data';
 
 import 'package:convert/convert.dart';
 import 'package:crypto/crypto.dart';
-import 'package:minio/minio.dart';
-import 'package:minio/models.dart';
-import 'package:minio/src/minio_client.dart';
-import 'package:minio/src/minio_helpers.dart';
-import 'package:minio/src/utils.dart';
+import 'package:zuraffa_minio/minio.dart';
+import 'package:zuraffa_minio/models.dart';
+import 'package:zuraffa_minio/src/minio_client.dart';
+import 'package:zuraffa_minio/src/minio_helpers.dart';
+import 'package:zuraffa_minio/src/utils.dart';
 
 class MinioUploader implements StreamConsumer<Uint8List> {
   MinioUploader(
