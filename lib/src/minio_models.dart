@@ -57,7 +57,10 @@ class CompleteMultipartUpload {
 
 class ListMultipartUploadsOutput {
   ListMultipartUploadsOutput.fromXml(XmlElement xml) {
-    isTruncated = getProp(xml, 'IsLatest')?.text.toUpperCase() == 'TRUE';
+    // Upstream read the `IsLatest` element here, which no S3 server ever
+    // sends, so `isTruncated` was always false and only the first page of an
+    // incomplete upload listing was ever returned.
+    isTruncated = getProp(xml, 'IsTruncated')?.text.toUpperCase() == 'TRUE';
     nextKeyMarker = getProp(xml, 'NextKeyMarker')?.text;
     nextUploadIdMarker = getProp(xml, 'NextUploadIdMarker')?.text;
     uploads = xml
@@ -74,10 +77,13 @@ class ListMultipartUploadsOutput {
 
 class ListPartsOutput {
   ListPartsOutput.fromXml(XmlElement xml) {
-    isTruncated = getProp(xml, 'IsLatest')?.text.toUpperCase() == 'TRUE';
+    // Both element names were wrong upstream: the server sends `IsTruncated`
+    // and the parts live in `Part` elements, not in `Upload` elements. The
+    // effect was that `listParts` always reported a single, empty page.
+    isTruncated = getProp(xml, 'IsTruncated')?.text.toUpperCase() == 'TRUE';
     nextPartNumberMarker =
-        int.parse(getProp(xml, 'NextPartNumberMarker')!.text);
-    parts = xml.findElements('Upload').map((e) => Part.fromXml(e)).toList();
+        int.tryParse(getProp(xml, 'NextPartNumberMarker')?.text ?? '') ?? 0;
+    parts = xml.findElements('Part').map((e) => Part.fromXml(e)).toList();
   }
 
   late bool isTruncated;

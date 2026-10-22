@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:http/http.dart' as http;
 import 'package:xml/xml.dart' as xml;
 import 'package:xml/xml.dart' show XmlElement;
 import 'package:zuraffa_minio/src/minio_client.dart';
@@ -29,7 +30,9 @@ class Minio {
     this.region,
     this.pathStyle,
     this.enableTrace = false,
-  }) : port = port ?? implyPort(useSSL) {
+    http.Client? httpClient,
+  }) : port = port ?? implyPort(useSSL),
+       _httpClient = httpClient {
     if (!isValidEndpoint(endPoint)) {
       throw MinioInvalidEndpointError(
         'End point $endPoint is not a valid domain or ip address',
@@ -88,6 +91,33 @@ class Minio {
   late MinioClient _client;
   final _regionMap = <String?, String>{};
 
+  http.Client? _httpClient;
+
+  /// The HTTP client every request is sent through.
+  ///
+  /// A client can be supplied to the constructor to take control of
+  /// connection pooling, proxies, TLS configuration or cancellation
+  /// (upstream issues #85, #45, #80, #93). When none is supplied a default
+  /// one is created lazily and owned by this instance.
+  http.Client get httpClient => _httpClient ??= http.Client();
+
+  /// Releases the resources held by the underlying HTTP client.
+  ///
+  /// Only a client created by this instance is closed; a client passed to the
+  /// constructor stays the caller's responsibility.
+  void close() {
+    _httpClient?.close();
+    _httpClient = null;
+  }
+
+  /// Remembers the region a bucket really lives in.
+  ///
+  /// Used to recover from a server that rejects a request signed for the
+  /// wrong region (upstream issue #38).
+  void cacheRegion(String bucket, String region) {
+    _regionMap[bucket] = region;
+  }
+
   /// Checks if a bucket exists.
   ///
   /// Returns `true` only if the [bucket] exists and you have the permission
@@ -120,7 +150,12 @@ class Minio {
   }
 
   int _calculatePartSize(int size) {
-    assert(size >= 0);
+    // An `assert` only fires in debug builds, so a negative size reached
+    // release code and blew up later with an opaque error. Upstream issue #24
+    // reported it as "the assert(size) issue".
+    if (size < 0) {
+      throw ArgumentError.value(size, 'size', 'must not be negative');
+    }
 
     if (size > maxObjectSize) {
       throw ArgumentError('size should not be more than $maxObjectSize');
@@ -286,12 +321,14 @@ class Minio {
   Future<String> getBucketRegion(String bucket) async {
     MinioInvalidBucketNameError.check(bucket);
 
-    if (region != null) {
-      return region!;
-    }
-
+    // A region the server itself confirmed wins over the configured one:
+    // it is the only one known to be correct for this bucket.
     if (_regionMap.containsKey(bucket)) {
       return _regionMap[bucket]!;
+    }
+
+    if (region != null) {
+      return region!;
     }
 
     final resp = await _client.request(
@@ -411,9 +448,17 @@ class Minio {
         delimiter,
       );
       for (var upload in result.uploads) {
-        final parts = listParts(bucket, upload.key!, upload.uploadId!);
-        final size =
-            await parts.fold(0, (dynamic acc, item) => acc + item.size);
+        int? size;
+        try {
+          final parts = listParts(bucket, upload.key!, upload.uploadId!);
+          size = await parts.fold<int>(0, (acc, item) => acc + (item.size ?? 0));
+        } on MinioS3Error {
+          // The upload cannot be inspected any more - it expired, it was
+          // completed elsewhere, or the server still lists an upload whose
+          // bucket it has already deleted. One unreadable upload must not
+          // fail the whole listing, so it is reported without a size.
+          size = null;
+        }
         yield IncompleteUpload(upload: upload, size: size);
       }
       keyMarker = result.nextKeyMarker;
@@ -433,8 +478,14 @@ class Minio {
     MinioInvalidBucketNameError.check(bucket);
     MinioInvalidPrefixError.check(prefix);
 
+    // The `uploads` sub-resource is already added by the `resource` argument
+    // below. Listing it here as well sent the parameter twice
+    // (`?uploads&uploads&...`), and the signature - which is computed from
+    // the parsed query, where a repeated key collapses to one - no longer
+    // matched what the server signed, so every call failed with
+    // "The request signature we calculated does not match the signature you
+    // provided".
     var queries = <String, dynamic>{
-      'uploads': null,
       'prefix': prefix,
       'delimiter': delimiter,
     };
@@ -456,7 +507,7 @@ class Minio {
     validate(resp);
 
     final node = xml.XmlDocument.parse(resp.body);
-    return ListMultipartUploadsOutput.fromXml(node.root as XmlElement);
+    return ListMultipartUploadsOutput.fromXml(node.rootElement);
   }
 
   /// Listen for notifications on a bucket. Additionally one can provider
@@ -487,8 +538,12 @@ class Minio {
     validate(resp);
     final bucketsNode =
         xml.XmlDocument.parse(resp.body).findAllElements('Buckets').first;
+    // The children of <Buckets> are not guaranteed to be elements: a server
+    // that indents its XML puts whitespace text nodes between them, and
+    // casting those to XmlElement threw (upstream issue #49).
     return bucketsNode.children
-        .map((n) => Bucket.fromXml(n as XmlElement))
+        .whereType<XmlElement>()
+        .map(Bucket.fromXml)
         .toList();
   }
 
@@ -743,7 +798,7 @@ class Minio {
     validate(resp);
 
     final node = xml.XmlDocument.parse(resp.body);
-    return ListPartsOutput.fromXml(node.root as XmlElement);
+    return ListPartsOutput.fromXml(node.rootElement);
   }
 
   /// Creates the bucket [bucket].
@@ -1131,11 +1186,20 @@ class Minio {
       etag = trimDoubleQuote(etag);
     }
 
+    // A HEAD response does not have to carry every header: some S3
+    // implementations answer without a content-length, and a missing
+    // last-modified is equally possible. Reading them with a bang operator
+    // turned both into a "Null check operator used on a null value" crash
+    // (upstream issue #108) - the fields are nullable, so the answer is too.
+    final contentLength = resp.headers['content-length'];
+    final lastModified = resp.headers['last-modified'];
+
     return StatObjectResult(
       etag: etag,
-      size: int.parse(resp.headers['content-length']!),
+      size: contentLength == null ? null : int.tryParse(contentLength),
       metaData: extractMetadata(resp.headers),
-      lastModified: parseRfc7231Time(resp.headers['last-modified']!),
+      lastModified:
+          lastModified == null ? null : parseRfc7231Time(lastModified),
       acl: retrieveAcls ? await getObjectACL(bucket, object) : null,
     );
   }

@@ -38,7 +38,24 @@ bool isValidPrefix(String prefix) {
   return true;
 }
 
+/// Whether [endpoint] is an Amazon S3 endpoint.
+///
+/// Upstream matched two exact strings only, which meant a regional Amazon
+/// host such as `s3-ap-northeast-1.amazonaws.com` was never recognised as
+/// Amazon and therefore never addressed in virtual host style.
 bool isAmazonEndpoint(String endpoint) {
+  if (endpoint == 's3.amazonaws.com' ||
+      endpoint == 's3.cn-north-1.amazonaws.com.cn') {
+    return true;
+  }
+  if (!endpoint.startsWith('s3.') && !endpoint.startsWith('s3-')) return false;
+  return endpoint.endsWith('.amazonaws.com') ||
+      endpoint.endsWith('.amazonaws.com.cn');
+}
+
+/// Whether [endpoint] is the partition-wide (global) Amazon endpoint, the
+/// only one that has to be rewritten into a regional host.
+bool isGlobalAmazonEndpoint(String endpoint) {
   return endpoint == 's3.amazonaws.com' ||
       endpoint == 's3.cn-north-1.amazonaws.com.cn';
 }

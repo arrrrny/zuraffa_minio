@@ -122,7 +122,7 @@ class MinioClient {
   late bool anonymous;
   late final int port;
 
-  Future<StreamedResponse> _request({
+  Future<({StreamedResponse response, String region})> _request({
     required String method,
     String? bucket,
     String? object,
@@ -137,7 +137,9 @@ class MinioClient {
       region ??= await minio.getBucketRegion(bucket);
     }
 
-    region ??= 'us-east-1';
+    // The configured region is the default signing region, so a request
+    // without a bucket is signed for the same region the host is built from.
+    region ??= minio.region ?? 'us-east-1';
 
     final request = getBaseRequest(
       method,
@@ -166,8 +168,8 @@ class MinioClient {
     final authorization = signV4(minio, request, date, region);
     request.headers['authorization'] = authorization;
     logRequest(request);
-    final response = await request.send();
-    return response;
+    final response = await minio.httpClient.send(request);
+    return (response: response, region: region);
   }
 
   Future<MinioResponse> request({
@@ -181,7 +183,7 @@ class MinioClient {
     Map<String, String>? headers,
     void Function(int)? onProgress,
   }) async {
-    final stream = await _request(
+    final first = await _request(
       method: method,
       bucket: bucket,
       object: object,
@@ -193,10 +195,45 @@ class MinioClient {
       onProgress: onProgress,
     );
 
-    final response = await MinioResponse.fromStream(stream);
+    var response = await MinioResponse.fromStream(first.response);
     logResponse(response);
 
+    // The server may tell us that the region we signed for is not the region
+    // the bucket lives in:
+    //
+    //   The authorization header is malformed; the region is wrong;
+    //   expecting 'us-east-1'.
+    //
+    // (upstream issue #38). Sign and address the request again with the
+    // region the server named, once, and remember it for the bucket.
+    final correctRegion = _regionFromError(response);
+    if (correctRegion != null && correctRegion != first.region) {
+      if (bucket != null) minio.cacheRegion(bucket, correctRegion);
+      final retry = await _request(
+        method: method,
+        bucket: bucket,
+        object: object,
+        region: correctRegion,
+        payload: payload,
+        resource: resource,
+        queries: queries,
+        headers: headers,
+        onProgress: onProgress,
+      );
+      response = await MinioResponse.fromStream(retry.response);
+      logResponse(response);
+    }
+
     return response;
+  }
+
+  /// The region an `AuthorizationHeaderMalformed` error asks for, if any.
+  String? _regionFromError(MinioResponse response) {
+    if (response.statusCode != 400) return null;
+    final body = response.body;
+    if (!body.contains('AuthorizationHeaderMalformed')) return null;
+    final match = RegExp(r'<Region>([^<]+)</Region>').firstMatch(body);
+    return match?.group(1)?.trim();
   }
 
   Future<StreamedResponse> requestStream({
@@ -209,7 +246,7 @@ class MinioClient {
     Map<String, dynamic>? queries,
     Map<String, String>? headers,
   }) async {
-    final response = await _request(
+    final result = await _request(
       method: method,
       bucket: bucket,
       object: object,
@@ -220,8 +257,8 @@ class MinioClient {
       headers: headers,
     );
 
-    logResponse(response);
-    return response;
+    logResponse(result.response);
+    return result.response;
   }
 
   MinioRequest getBaseRequest(
@@ -234,7 +271,7 @@ class MinioClient {
     Map<String, String>? headers,
     void Function(int)? onProgress,
   ) {
-    final url = getRequestUrl(bucket, object, resource, queries);
+    final url = getRequestUrl(bucket, object, resource, queries, region: region);
     final request = MinioRequest(method, url, onProgress: onProgress);
     request.headers['host'] = url.authority;
 
@@ -249,15 +286,29 @@ class MinioClient {
     String? bucket,
     String? object,
     String? resource,
-    Map<String, dynamic>? queries,
-  ) {
+    Map<String, dynamic>? queries, {
+    String? region,
+  }) {
     var host = minio.endPoint.toLowerCase();
     var path = '/';
 
-    bool pathStyle = minio.pathStyle ?? true;
+    // The effective region is the one the signature will claim. It decides
+    // the AWS host as well, so host and signature can never disagree.
+    //
+    // Upstream read `minio.region!` here, which threw "Unexpected null value"
+    // whenever an Amazon endpoint was used without an explicit region
+    // (upstream issue #43).
+    final effectiveRegion = region ?? minio.region ?? 'us-east-1';
+
+    var pathStyle = minio.pathStyle ?? true;
     if (isAmazonEndpoint(host)) {
-      host = getS3Endpoint(minio.region!);
-      pathStyle = !isVirtualHostStyle(host, minio.useSSL, bucket);
+      if (isGlobalAmazonEndpoint(host)) {
+        host = getS3Endpoint(effectiveRegion);
+      }
+      // Virtual host style is the documented default for Amazon endpoints
+      // ("pathStyle ... for non AWS endpoints"); upstream always fell back to
+      // path style because it tested the already-regionalized host.
+      pathStyle = minio.pathStyle ?? !isVirtualHostStyle(host, minio.useSSL, bucket);
     }
 
     if (!pathStyle) {
