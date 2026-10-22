@@ -113,4 +113,55 @@ void main() {
     // A nested model is written as its children.
     expect(code, contains('as XmlDocument).rootElement.children'));
   });
+
+  test('the committed file starts with the header of the generator', () {
+    // The file is named `_generated`: the helpers it uses must be the ones
+    // the generator writes, or the two drift apart and a regeneration loses
+    // the corrections.
+    final committed = File(
+      'lib/src/minio_models_generated.dart',
+    ).readAsStringSync();
+
+    expect(committed, startsWith(header));
+  });
+
+  group('the generator writes the notification configuration', () {
+    test('with the elements the server reads', () {
+      final code = generateModel('QueueConfiguration', 'A queue.', [
+        _field('QueueArn', 'String'),
+        _field('Id', 'String'),
+        _field('Events', 'String', isArray: true),
+      ]);
+
+      // The destination is written `<Queue>`, and the name an older version
+      // of this package wrote is read as well.
+      expect(code, contains("getProp(xml, 'Queue')?.text"));
+      expect(code, contains("getProp(xml, 'QueueArn')?.text"));
+      expect(code, contains("builder.element('Queue', nest: queueArn)"));
+
+      // The events are one `<Event>` element per event, directly under the
+      // configuration.
+      expect(code, contains('eventsFromXml(xml)'));
+      expect(code, contains("builder.element('Event', nest: event)"));
+      expect(code, contains('List<String>? events;'));
+    });
+
+    test('with the configurations as direct children', () {
+      final code = generateModel('NotificationConfiguration', 'A config.', [
+        _field(
+          'QueueConfigurations',
+          'QueueConfiguration',
+          isObject: true,
+          isArray: true,
+        ),
+      ]);
+
+      // A wrapper element is ignored by the server, and the configuration is
+      // then silently lost.
+      expect(code, contains('configurationsFromXml<QueueConfiguration>'));
+      expect(code, isNot(contains("builder.element('QueueConfigurations'")));
+      expect(code, contains('builder.element('));
+      expect(code, contains("'QueueConfiguration',"));
+    });
+  });
 }

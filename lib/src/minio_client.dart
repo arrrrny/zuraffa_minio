@@ -323,6 +323,10 @@ class MinioClient {
     // `getBaseRequest` derives the signed `host` header from that same URL,
     // so signature can never disagree with the address.
     final effectiveSSL = useSSL ?? minio.useSSL;
+    // An explicit host override is the caller's decision and is never
+    // rewritten: a caller that presigns for a public host gets exactly that
+    // host, even when it names a global Amazon endpoint.
+    final hasHostOverride = host != null;
     var hostName = (host ?? minio.endPoint).toLowerCase();
     final effectivePort = port ?? minio.port;
     var path = '/';
@@ -337,7 +341,10 @@ class MinioClient {
 
     var pathStyle = minio.pathStyle ?? true;
     if (isAmazonEndpoint(hostName)) {
-      if (isGlobalAmazonEndpoint(hostName)) {
+      if (!hasHostOverride && isGlobalAmazonEndpoint(hostName)) {
+        // The global Amazon endpoint is the only one that is regionalized:
+        // the region the request is signed for has to match the host it is
+        // sent to. An explicit override is left alone.
         hostName = getS3Endpoint(effectiveRegion);
       }
       // The default stays the one upstream used: path style. Upstream tested

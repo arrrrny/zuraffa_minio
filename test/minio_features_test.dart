@@ -160,7 +160,7 @@ Future<void> main() async {
 
     test('the requests of a client with a provider are signed', () async {
       var calls = 0;
-      final minio = Minio(
+      final minio = Minio.withCredentialsProvider(
         endPoint: MinioTestServer.endpoint,
         port: MinioTestServer.port,
         useSSL: MinioTestServer.useSSL,
@@ -185,7 +185,7 @@ Future<void> main() async {
     pkg_test.test(
       'a presigned url is signed with the resolved credentials',
       () async {
-        final minio = Minio(
+        final minio = Minio.withCredentialsProvider(
           endPoint: MinioTestServer.endpoint,
           port: MinioTestServer.port,
           useSSL: MinioTestServer.useSSL,

@@ -8,9 +8,23 @@ XmlElement? getProp(XmlElement? xml, String name) {
   return result.isNotEmpty ? result.first : null;
 }
 
-/// The `<Events>` element of a notification configuration holds one
-/// `<Event>` child per event. Older servers write the events as the text of
-/// the element instead, and both forms are read.
+/// The `<Xxxs>` element of a model holds one child element per item.
+List<T>? listFromXml<T>(
+  XmlElement? xml,
+  String itemName,
+  T Function(XmlElement? xml) parse,
+) {
+  if (xml == null) return null;
+  final items = <T>[];
+  for (final child in xml.findElements(itemName)) {
+    items.add(parse(child));
+  }
+  return items;
+}
+
+/// The events of a notification configuration are one `<Event>` element per
+/// event, directly under the configuration. A server that writes them as the
+/// text of a single `<Events>` element is read as well.
 List<String>? eventsFromXml(XmlElement? xml) {
   if (xml == null) return null;
   final events = <String>[];
@@ -18,24 +32,49 @@ List<String>? eventsFromXml(XmlElement? xml) {
     events.add(event.text);
   }
   if (events.isEmpty) {
-    final text = xml.text.trim();
-    if (text.isNotEmpty) {
-      events.add(text);
+    final wrapper = getProp(xml, 'Events');
+    if (wrapper != null) {
+      for (final event in wrapper.findElements('Event')) {
+        events.add(event.text);
+      }
+      if (events.isEmpty) {
+        final text = wrapper.text.trim();
+        if (text.isNotEmpty) {
+          events.add(text);
+        }
+      }
     }
   }
   return events;
 }
 
-/// The `<XxxConfigurations>` element of a notification configuration holds one
-/// child element per configuration.
+/// The configurations of a notification configuration are the direct children
+/// of the `<NotificationConfiguration>` element, one element per
+/// configuration.
+///
+/// A server that wraps them in an element of their own is read as well, so a
+/// document written by an older version of this package is not lost.
 List<T>? configurationsFromXml<T>(
   XmlElement? xml,
-  T Function(XmlElement? xml) parse,
-) {
+  String elementName,
+  T Function(XmlElement? xml) parse, {
+  String? wrapperName,
+  String? wrapperItemName,
+}) {
   if (xml == null) return null;
   final configurations = <T>[];
-  for (final child in xml.childElements) {
+  for (final child in xml.findElements(elementName)) {
     configurations.add(parse(child));
+  }
+  if (configurations.isEmpty && wrapperName != null) {
+    final wrapper = getProp(xml, wrapperName);
+    if (wrapper != null) {
+      for (final child in wrapper.findElements(
+        wrapperItemName ?? elementName,
+      )) {
+        configurations.add(parse(child));
+      }
+    }
   }
   return configurations;
 }
@@ -2128,10 +2167,12 @@ class LambdaFunctionConfiguration {
   );
 
   LambdaFunctionConfiguration.fromXml(XmlElement? xml) {
-    events = eventsFromXml(getProp(xml, 'Events'));
+    events = eventsFromXml(xml);
     filter = NotificationConfigurationFilter.fromXml(getProp(xml, 'Filter'));
     id = getProp(xml, 'Id')?.text;
-    lambdaFunctionArn = getProp(xml, 'LambdaFunctionArn')?.text;
+    lambdaFunctionArn =
+        getProp(xml, 'CloudFunction')?.text ??
+        getProp(xml, 'LambdaFunctionArn')?.text;
   }
 
   XmlNode toXml() {
@@ -2140,14 +2181,9 @@ class LambdaFunctionConfiguration {
       'LambdaFunctionConfiguration',
       nest: () {
         if (events != null) {
-          builder.element(
-            'Events',
-            nest: () {
-              for (final event in events!) {
-                builder.element('Event', nest: event);
-              }
-            },
-          );
+          for (final event in events!) {
+            builder.element('Event', nest: event);
+          }
         }
         if (filter != null) {
           builder.element(
@@ -2161,7 +2197,7 @@ class LambdaFunctionConfiguration {
         }
 
         if (lambdaFunctionArn != null) {
-          builder.element('LambdaFunctionArn', nest: lambdaFunctionArn);
+          builder.element('CloudFunction', nest: lambdaFunctionArn);
         }
       },
     );
@@ -2847,16 +2883,23 @@ class NotificationConfiguration {
   NotificationConfiguration.fromXml(XmlElement? xml) {
     lambdaFunctionConfigurations =
         configurationsFromXml<LambdaFunctionConfiguration>(
-          getProp(xml, 'LambdaFunctionConfigurations'),
+          xml,
+          'CloudFunctionConfiguration',
           LambdaFunctionConfiguration.fromXml,
+          wrapperName: 'LambdaFunctionConfigurations',
+          wrapperItemName: 'LambdaFunctionConfiguration',
         );
     queueConfigurations = configurationsFromXml<QueueConfiguration>(
-      getProp(xml, 'QueueConfigurations'),
+      xml,
+      'QueueConfiguration',
       QueueConfiguration.fromXml,
+      wrapperName: 'QueueConfigurations',
     );
     topicConfigurations = configurationsFromXml<TopicConfiguration>(
-      getProp(xml, 'TopicConfigurations'),
+      xml,
+      'TopicConfiguration',
       TopicConfiguration.fromXml,
+      wrapperName: 'TopicConfigurations',
     );
   }
 
@@ -2866,49 +2909,28 @@ class NotificationConfiguration {
       'NotificationConfiguration',
       nest: () {
         if (lambdaFunctionConfigurations != null) {
-          builder.element(
-            'LambdaFunctionConfigurations',
-            nest: () {
-              for (final configuration in lambdaFunctionConfigurations!) {
-                builder.element(
-                  'LambdaFunctionConfiguration',
-                  nest: (configuration.toXml() as XmlDocument)
-                      .rootElement
-                      .children,
-                );
-              }
-            },
-          );
+          for (final configuration in lambdaFunctionConfigurations!) {
+            builder.element(
+              'CloudFunctionConfiguration',
+              nest: (configuration.toXml() as XmlDocument).rootElement.children,
+            );
+          }
         }
         if (queueConfigurations != null) {
-          builder.element(
-            'QueueConfigurations',
-            nest: () {
-              for (final configuration in queueConfigurations!) {
-                builder.element(
-                  'QueueConfiguration',
-                  nest: (configuration.toXml() as XmlDocument)
-                      .rootElement
-                      .children,
-                );
-              }
-            },
-          );
+          for (final configuration in queueConfigurations!) {
+            builder.element(
+              'QueueConfiguration',
+              nest: (configuration.toXml() as XmlDocument).rootElement.children,
+            );
+          }
         }
         if (topicConfigurations != null) {
-          builder.element(
-            'TopicConfigurations',
-            nest: () {
-              for (final configuration in topicConfigurations!) {
-                builder.element(
-                  'TopicConfiguration',
-                  nest: (configuration.toXml() as XmlDocument)
-                      .rootElement
-                      .children,
-                );
-              }
-            },
-          );
+          for (final configuration in topicConfigurations!) {
+            builder.element(
+              'TopicConfiguration',
+              nest: (configuration.toXml() as XmlDocument).rootElement.children,
+            );
+          }
         }
       },
     );
@@ -3692,10 +3714,10 @@ class QueueConfiguration {
   QueueConfiguration(this.events, this.filter, this.id, this.queueArn);
 
   QueueConfiguration.fromXml(XmlElement? xml) {
-    events = eventsFromXml(getProp(xml, 'Events'));
+    events = eventsFromXml(xml);
     filter = NotificationConfigurationFilter.fromXml(getProp(xml, 'Filter'));
     id = getProp(xml, 'Id')?.text;
-    queueArn = getProp(xml, 'QueueArn')?.text;
+    queueArn = getProp(xml, 'Queue')?.text ?? getProp(xml, 'QueueArn')?.text;
   }
 
   XmlNode toXml() {
@@ -3704,14 +3726,9 @@ class QueueConfiguration {
       'QueueConfiguration',
       nest: () {
         if (events != null) {
-          builder.element(
-            'Events',
-            nest: () {
-              for (final event in events!) {
-                builder.element('Event', nest: event);
-              }
-            },
-          );
+          for (final event in events!) {
+            builder.element('Event', nest: event);
+          }
         }
         if (filter != null) {
           builder.element(
@@ -3725,7 +3742,7 @@ class QueueConfiguration {
         }
 
         if (queueArn != null) {
-          builder.element('QueueArn', nest: queueArn);
+          builder.element('Queue', nest: queueArn);
         }
       },
     );
@@ -5262,10 +5279,10 @@ class TopicConfiguration {
   TopicConfiguration(this.events, this.filter, this.id, this.topicArn);
 
   TopicConfiguration.fromXml(XmlElement? xml) {
-    events = eventsFromXml(getProp(xml, 'Events'));
+    events = eventsFromXml(xml);
     filter = NotificationConfigurationFilter.fromXml(getProp(xml, 'Filter'));
     id = getProp(xml, 'Id')?.text;
-    topicArn = getProp(xml, 'TopicArn')?.text;
+    topicArn = getProp(xml, 'Topic')?.text ?? getProp(xml, 'TopicArn')?.text;
   }
 
   XmlNode toXml() {
@@ -5274,14 +5291,9 @@ class TopicConfiguration {
       'TopicConfiguration',
       nest: () {
         if (events != null) {
-          builder.element(
-            'Events',
-            nest: () {
-              for (final event in events!) {
-                builder.element('Event', nest: event);
-              }
-            },
-          );
+          for (final event in events!) {
+            builder.element('Event', nest: event);
+          }
         }
         if (filter != null) {
           builder.element(
@@ -5295,7 +5307,7 @@ class TopicConfiguration {
         }
 
         if (topicArn != null) {
-          builder.element('TopicArn', nest: topicArn);
+          builder.element('Topic', nest: topicArn);
         }
       },
     );

@@ -187,6 +187,8 @@ void testFPutObject() {
     tearDownAll(() async {
       final minio = getMinioClient();
       await minio.removeObject(bucketName, objectName);
+      await minio.removeObject(bucketName, 'empty.txt');
+      await minio.removeBucket(bucketName);
       await tempDir.delete(recursive: true);
     });
 
@@ -274,6 +276,9 @@ void testSetObjectACL() {
     });
 
     tearDownAll(() async {
+      final minio = getMinioClient();
+      await minio.removeObject(bucketName, objectName);
+      await minio.removeBucket(bucketName);
       await tempDir.delete(recursive: true);
     });
 
@@ -305,6 +310,9 @@ void testGetObjectACL() {
     });
 
     tearDownAll(() async {
+      final minio = getMinioClient();
+      await minio.removeObject(bucketName, objectName);
+      await minio.removeBucket(bucketName);
       await tempDir.delete(recursive: true);
     });
 

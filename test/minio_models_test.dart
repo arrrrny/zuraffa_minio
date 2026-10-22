@@ -61,7 +61,28 @@ void main() {
   });
 
   group('a notification configuration', () {
+    // The shape a server sends: the configurations are the direct children
+    // of the notification configuration, the events are one element per
+    // event and the destination is written `<Queue>`.
     const configuration = '''
+<NotificationConfiguration>
+  <CloudFunctionConfiguration>
+    <Id>the-id</Id>
+    <CloudFunction>arn:aws:lambda:eu-central-1:1:function:f</CloudFunction>
+    <Event>s3:ObjectCreated:*</Event>
+    <Event>s3:ObjectRemoved:*</Event>
+  </CloudFunctionConfiguration>
+  <QueueConfiguration>
+    <Id>the-queue</Id>
+    <Queue>arn:aws:sqs:eu-central-1:1:q</Queue>
+    <Event>s3:ObjectCreated:*</Event>
+  </QueueConfiguration>
+</NotificationConfiguration>''';
+
+    // The shape an older version of this package wrote: the configurations
+    // are wrapped in an element of their own, the events are the children of
+    // an `<Events>` element and the destination is written `<QueueArn>`.
+    const legacyConfiguration = '''
 <NotificationConfiguration>
   <LambdaFunctionConfigurations>
     <LambdaFunctionConfiguration>
@@ -84,7 +105,7 @@ void main() {
   </QueueConfigurations>
 </NotificationConfiguration>''';
 
-    test('is read out of the wrapper elements', () {
+    test('is read out of the shape a server sends', () {
       final xml = XmlDocument.parse(configuration);
       final parsed = NotificationConfiguration.fromXml(xml.rootElement);
 
@@ -104,6 +125,28 @@ void main() {
       expect(queue.events, ['s3:ObjectCreated:*']);
     });
 
+    test('is read out of the shape an older version wrote', () {
+      final xml = XmlDocument.parse(legacyConfiguration);
+      final parsed = NotificationConfiguration.fromXml(xml.rootElement);
+
+      expect(parsed.lambdaFunctionConfigurations, hasLength(1));
+      expect(
+        parsed.lambdaFunctionConfigurations!.first.lambdaFunctionArn,
+        'arn:aws:lambda:eu-central-1:1:function:f',
+      );
+      expect(parsed.lambdaFunctionConfigurations!.first.events, [
+        's3:ObjectCreated:*',
+        's3:ObjectRemoved:*',
+      ]);
+
+      expect(parsed.queueConfigurations, hasLength(1));
+      expect(
+        parsed.queueConfigurations!.first.queueArn,
+        'arn:aws:sqs:eu-central-1:1:q',
+      );
+      expect(parsed.queueConfigurations!.first.events, ['s3:ObjectCreated:*']);
+    });
+
     test('is written back in the shape the server expects', () {
       final parsed = NotificationConfiguration.fromXml(
         XmlDocument.parse(configuration).rootElement,
@@ -111,13 +154,27 @@ void main() {
 
       final xml = parsed.toXml().toXmlString();
 
-      expect(xml, contains('<LambdaFunctionConfigurations>'));
-      expect(xml, contains('<LambdaFunctionConfiguration>'));
-      expect(xml, contains('<Event>s3:ObjectCreated:*</Event>'));
-      expect(xml, contains('<QueueConfigurations>'));
+      // The configurations are the direct children of the notification
+      // configuration. A wrapper element is ignored by the server, and the
+      // configuration is then silently lost.
+      expect(xml, contains('<CloudFunctionConfiguration>'));
       expect(xml, contains('<QueueConfiguration>'));
+      expect(xml, isNot(contains('<QueueConfigurations>')));
+      // The events are one element per event, not the text of one element.
+      expect(xml, contains('<Event>s3:ObjectCreated:*</Event>'));
+      expect(xml, contains('<Event>s3:ObjectRemoved:*</Event>'));
+      expect(xml, isNot(contains('<Events>')));
+      // The destination is written the way the server names it.
+      expect(xml, contains('<Queue>arn:aws:sqs:eu-central-1:1:q</Queue>'));
+      expect(
+        xml,
+        contains(
+          '<CloudFunction>arn:aws:lambda:eu-central-1:1:function:f'
+          '</CloudFunction>',
+        ),
+      );
       // The configuration must not be written twice.
-      expect('<LambdaFunctionConfiguration>'.allMatches(xml).length, 1);
+      expect('<QueueConfiguration>'.allMatches(xml).length, 1);
     });
 
     test('is read back what it wrote', () {
@@ -139,6 +196,11 @@ void main() {
         's3:ObjectRemoved:*',
       ]);
       expect(again.queueConfigurations, hasLength(1));
+      expect(
+        again.queueConfigurations!.first.queueArn,
+        'arn:aws:sqs:eu-central-1:1:q',
+      );
+      expect(again.queueConfigurations!.first.events, ['s3:ObjectCreated:*']);
     });
   });
 }

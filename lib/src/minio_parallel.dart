@@ -73,12 +73,49 @@ List<List<int>> planRanges(int totalBytes, int chunkSize) {
   return ranges;
 }
 
+/// A condition variable for the ranges of a parallel download.
+///
+/// The callers wait until their condition holds. A signal wakes every waiter
+/// up; the ones whose condition still does not hold go back to waiting.
+class _Window {
+  _Window(this.limit);
+
+  /// How many ranges may run ahead of the head of the object.
+  final int limit;
+
+  final List<Completer<void>> _waiters = <Completer<void>>[];
+
+  /// Wakes every waiter up.
+  void signal() {
+    if (_waiters.isEmpty) return;
+    final waiters = List<Completer<void>>.of(_waiters);
+    _waiters.clear();
+    for (final waiter in waiters) {
+      waiter.complete();
+    }
+  }
+
+  /// Waits until [isTrue] holds.
+  Future<void> wait(bool Function() isTrue) async {
+    while (!isTrue()) {
+      final completer = Completer<void>();
+      _waiters.add(completer);
+      await completer.future;
+    }
+  }
+}
+
 /// Downloads an object as concurrent byte ranges and streams the bytes back
 /// in the original order.
 ///
 /// The ranges are fetched with at most [parallelism] requests in flight, but
 /// the bytes are emitted in order, so the result is identical to a sequential
 /// download. [onProgress] is called with the number of bytes received so far.
+///
+/// A range may not run further ahead of the head of the object than the
+/// number of parallel requests. The bytes of a range that waits for its turn
+/// are held in memory, so a slow range at the head must not make the
+/// download hold the whole object.
 Future<MinioByteStream> fetchInParallel({
   required RangedFetcher fetch,
   required int totalBytes,
@@ -101,13 +138,16 @@ Future<MinioByteStream> fetchInParallel({
 
   final controller = StreamController<Uint8List>();
 
-  final semaphore = CountingSemaphore(parallelism < 1 ? 1 : parallelism);
+  final limit = parallelism < 1 ? 1 : parallelism;
+  final semaphore = CountingSemaphore(limit);
+  final window = _Window(limit);
   final received = <int, Uint8List>{};
   var nextIndex = 0;
   var bytesRead = 0;
   var failed = false;
+  Object? failure;
 
-  Future<void> emitReady() async {
+  void emitReady() {
     while (!failed && received.containsKey(nextIndex)) {
       final chunk = received.remove(nextIndex)!;
       nextIndex++;
@@ -115,6 +155,9 @@ Future<MinioByteStream> fetchInParallel({
       controller.add(chunk);
       onProgress?.call(bytesRead, totalBytes);
     }
+    // The head of the object moved, so the ranges that were waiting for
+    // their turn may run now.
+    window.signal();
   }
 
   Future<void> run() async {
@@ -122,11 +165,15 @@ Future<MinioByteStream> fetchInParallel({
     for (var index = 0; index < ranges.length; index++) {
       final range = ranges[index];
       final future = () async {
+        // The range waits until it is close enough to the head of the
+        // object: the bytes of the ranges ahead of it are held in memory.
+        await window.wait(() => failed || index - nextIndex < limit);
+        if (failed) throw failure!;
         await semaphore.acquire();
         try {
           final bytes = await fetch(range[0], range[1]);
           received[index] = bytes;
-          await emitReady();
+          emitReady();
         } finally {
           semaphore.release();
         }
@@ -138,16 +185,19 @@ Future<MinioByteStream> fetchInParallel({
       await Future.wait(futures);
     } catch (error, stack) {
       failed = true;
+      failure = error;
       // The error goes to the consumer. A download that lost a range must not
       // look like a complete one: the stream would end normally and the
       // caller would have no way of telling the difference.
       controller.addError(error, stack);
+      // The ranges that are still waiting for their turn will never run.
+      window.signal();
     }
 
     if (failed) {
       await controller.close();
     } else {
-      await emitReady();
+      emitReady();
       await controller.close();
     }
   }

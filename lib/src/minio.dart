@@ -53,10 +53,77 @@ typedef MinioCredentialsProvider = Future<MinioCredentials> Function();
 
 class Minio {
   /// Initializes a new client object.
+  ///
+  /// The keys are required on purpose. A client whose keys were forgotten
+  /// signs every request with an empty key and is anonymous without saying
+  /// so; a compile error is the better answer. A client that resolves its
+  /// own credentials uses [Minio.withCredentialsProvider] instead.
   Minio({
+    required String endPoint,
+    required String accessKey,
+    required String secretKey,
+    int? port,
+    bool useSSL = true,
+    String? sessionToken,
+    String? region,
+    bool? pathStyle,
+    bool enableTrace = false,
+    http.Client? httpClient,
+    MinioCredentialsProvider? credentialsProvider,
+    Duration credentialsTtl = const Duration(minutes: 5),
+    MinioCancellationToken? cancellationToken,
+  }) : this._(
+         endPoint: endPoint,
+         accessKey: accessKey,
+         secretKey: secretKey,
+         port: port,
+         useSSL: useSSL,
+         sessionToken: sessionToken,
+         region: region,
+         pathStyle: pathStyle,
+         enableTrace: enableTrace,
+         httpClient: httpClient,
+         credentialsProvider: credentialsProvider,
+         credentialsTtl: credentialsTtl,
+         cancellationToken: cancellationToken,
+       );
+
+  /// Initializes a client that resolves its credentials itself.
+  ///
+  /// The provider is called before every signature that needs fresh
+  /// credentials, and its result is cached for [credentialsTtl]
+  /// (upstream issue #94).
+  Minio.withCredentialsProvider({
+    required String endPoint,
+    required MinioCredentialsProvider credentialsProvider,
+    int? port,
+    bool useSSL = true,
+    String? region,
+    bool? pathStyle,
+    bool enableTrace = false,
+    http.Client? httpClient,
+    Duration credentialsTtl = const Duration(minutes: 5),
+    MinioCancellationToken? cancellationToken,
+  }) : this._(
+         endPoint: endPoint,
+         accessKey: '',
+         secretKey: '',
+         port: port,
+         useSSL: useSSL,
+         sessionToken: null,
+         region: region,
+         pathStyle: pathStyle,
+         enableTrace: enableTrace,
+         httpClient: httpClient,
+         credentialsProvider: credentialsProvider,
+         credentialsTtl: credentialsTtl,
+         cancellationToken: cancellationToken,
+       );
+
+  Minio._({
     required this.endPoint,
-    String accessKey = '',
-    String secretKey = '',
+    required String accessKey,
+    required String secretKey,
     int? port,
     this.useSSL = true,
     String? sessionToken,
@@ -527,6 +594,13 @@ class Minio {
     int parallelism = 1,
     int? chunkSize,
   }) {
+    // The chunk size is checked here and not only in the planner of the
+    // ranges: a chunk size of zero would otherwise be rejected only after
+    // the size of the object had been fetched over the network.
+    if (chunkSize != null && chunkSize <= 0) {
+      throw ArgumentError.value(chunkSize, 'chunkSize', 'must be positive');
+    }
+
     if (parallelism > 1) {
       return _getObjectInParallel(
         bucket,
