@@ -62,9 +62,7 @@ Future<void> main() async {
 
   // A time limited link the browser can use without the credentials.
   //
-  // Workaround for arrrrrny/zuraffa_minio#1: `expires` is a number of
-  // seconds, not a Duration — upstream minio never accepted a Duration
-  // here either.
+  // `expires` is a number of seconds, not a Duration.
   final url = await minio.presignedUrl('GET', bucket, object, expires: 15 * 60);
   print('download url: $url');
 
