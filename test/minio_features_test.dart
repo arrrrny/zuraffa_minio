@@ -308,38 +308,46 @@ Future<void> main() async {
       await minio.removeBucket(bucket);
     });
 
-    test('the parts of a parallel upload land in the right order', () async {
-      final minio = getMinioClient();
-      final bucket = uniqueName();
-      final object = uniqueName();
-      final partSize = 5 * 1024 * 1024;
-      final data = Uint8List.fromList(
-        List<int>.generate(12 * 1024 * 1024, (i) => (i * 13) % 256),
-      );
+    test(
+      'the parts of a parallel upload land in the right order',
+      () async {
+        final minio = getMinioClient();
+        final bucket = uniqueName();
+        final object = uniqueName();
+        final partSize = 5 * 1024 * 1024;
+        final data = Uint8List.fromList(
+          List<int>.generate(12 * 1024 * 1024, (i) => (i * 13) % 256),
+        );
 
-      await minio.makeBucket(bucket);
+        await minio.makeBucket(bucket);
 
-      await minio.putObject(
-        bucket,
-        object,
-        Stream.value(data),
-        chunkSize: partSize,
-        maxParallelUploads: 4,
-      );
+        await minio.putObject(
+          bucket,
+          object,
+          Stream.value(data),
+          chunkSize: partSize,
+          maxParallelUploads: 4,
+        );
 
-      final stat = await minio.statObject(bucket, object);
-      expect(stat.size, equals(data.length));
+        final stat = await minio.statObject(bucket, object);
+        expect(stat.size, equals(data.length));
 
-      final stream = await minio.getObject(bucket, object);
-      final downloaded = <int>[];
-      await for (final chunk in stream) {
-        downloaded.addAll(chunk);
-      }
-      expect(downloaded, equals(data.toList()));
+        final stream = await minio.getObject(bucket, object);
+        final downloaded = <int>[];
+        await for (final chunk in stream) {
+          downloaded.addAll(chunk);
+        }
+        expect(downloaded, equals(data.toList()));
 
-      await minio.removeObject(bucket, object);
-      await minio.removeBucket(bucket);
-    });
+        await minio.removeObject(bucket, object);
+        await minio.removeBucket(bucket);
+      },
+      // A 12 MiB parallel upload and the download of the whole object take
+      // longer than the 30 s the package allows by default when the suite
+      // runs its files at the same time. The test is about the order of the
+      // parts, not about how fast the host is.
+      timeout: const pkg_test.Timeout(Duration(minutes: 2)),
+    );
   });
 
   group('issue #102 — a multipart upload driven by hand', () {

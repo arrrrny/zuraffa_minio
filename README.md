@@ -170,7 +170,7 @@ STS credentials expire. Instead of recreating the client, hand it a provider
 that returns fresh credentials when they are needed:
 
 ```dart
-final minio = Minio(
+final minio = Minio.withCredentialsProvider(
   endPoint: 's3.amazonaws.com',
   region: 'eu-central-1',
   credentialsProvider: () async {
