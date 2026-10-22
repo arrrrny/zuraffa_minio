@@ -171,6 +171,28 @@ maintainer with the disposition above.
 - **FR-16** The examples cover the multipart upload and the web upload, and the
   documentation explains the confusing parts.
 
+### Requirements from the review of the pull request
+
+The automated review of the pull request of the fork found sixteen issues.
+These are the requirements they turned into:
+
+- **FR-17** A parallel download that loses a range hands the error to the
+  consumer. A truncated download must not look like a complete one.
+- **FR-18** A chunk size of zero is rejected with an argument error instead of
+  running forever.
+- **FR-19** The upload of a part accepts a plain list of bytes, and the client
+  only closes an HTTP client that it created itself.
+- **FR-20** The Amazon endpoints keep the path style of the upstream package as
+  their default, so the migration stays an import swap.
+- **FR-21** The notification configuration reads and writes the wrapper
+  elements the server uses: the configurations are a list and the events are
+  the children of the `Events` element.
+- **FR-22** The default library does not export the models, because one of
+  them is called `Object` and the export would shadow the `Object` of
+  `dart:core`.
+- **FR-23** The generator of the models writes code that compiles, and the
+  examples of the README are checked the same way.
+
 ### Non-functional requirements
 
 - **NFR-1** The upstream test suite passes unchanged, plus the new tests.

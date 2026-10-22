@@ -111,8 +111,11 @@ Future<void> main() async {
   print('etag: $etag');
 
   final data = await minio.getObject('my-bucket', 'greeting.txt');
-  final content = await data.read().then((bytes) => String.fromCharCodes(bytes));
-  print(content);
+  final buffer = BytesBuilder();
+  await for (final chunk in data) {
+    buffer.add(chunk);
+  }
+  print(String.fromCharCodes(buffer.takeBytes()));
 
   minio.close();
 }
@@ -200,7 +203,11 @@ final minio = Minio(
   cancellationToken: token,
 );
 
-final upload = minio.putObject('my-bucket', 'big.bin', data);
+final upload = minio.putObject(
+  'my-bucket',
+  'big.bin',
+  Stream<Uint8List>.value(data),
+);
 token.cancel();     // aborts the request that is in flight
 await upload;       // the upload fails
 ```
@@ -245,7 +252,7 @@ final minio = Minio(
 await minio.putObject(
   'my-bucket',
   'big.bin',
-  data,
+  Stream<Uint8List>.value(data),
   size: data.length,
   maxParallelUploads: 4,
 );
