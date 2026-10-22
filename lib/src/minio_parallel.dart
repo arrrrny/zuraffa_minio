@@ -15,12 +15,22 @@ typedef RangedFetcher = Future<Uint8List> Function(int offset, int length);
 typedef ProgressCallback = void Function(int bytesRead, int? totalBytes);
 
 /// A counting semaphore, used to keep at most [max] requests in flight.
-class _Semaphore {
-  _Semaphore(this.max);
+///
+/// The slot is handed over to the next waiter by [release], so the number of
+/// holders never grows past [max] — not even when a new caller arrives in
+/// the middle of the handover.
+class CountingSemaphore {
+  CountingSemaphore(this.max);
 
   final int max;
   int _inFlight = 0;
   final List<Completer<void>> _waiters = <Completer<void>>[];
+
+  /// How many callers hold a slot right now.
+  ///
+  /// It never grows past [max]. It is read by the tests that guard the
+  /// handover of a slot.
+  int get inFlight => _inFlight;
 
   Future<void> acquire() async {
     if (_inFlight < max) {
@@ -85,7 +95,7 @@ Future<MinioByteStream> fetchInParallel({
 
   final controller = StreamController<Uint8List>();
 
-  final semaphore = _Semaphore(parallelism < 1 ? 1 : parallelism);
+  final semaphore = CountingSemaphore(parallelism < 1 ? 1 : parallelism);
   final received = <int, Uint8List>{};
   var nextIndex = 0;
   var bytesRead = 0;

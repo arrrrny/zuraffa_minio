@@ -43,6 +43,47 @@ void main() {
     });
   });
 
+  group('CountingSemaphore', () {
+    test('never lets more callers hold a slot than its limit', () async {
+      final semaphore = CountingSemaphore(1);
+      await semaphore.acquire();
+      expect(semaphore.inFlight, 1);
+
+      // A second caller queues up behind the first one.
+      final waiter = semaphore.acquire();
+      await Future<void>.delayed(Duration.zero);
+      expect(semaphore.inFlight, 1);
+
+      // The slot is handed over, and a newcomer arrives in the middle of the
+      // handover — the moment where a semaphore that gives the slot back
+      // before it hands it over lets one caller too many through.
+      semaphore.release();
+      final newcomer = semaphore.acquire();
+
+      await waiter;
+      expect(semaphore.inFlight, 1);
+
+      // The waiter hands the slot on to the newcomer.
+      semaphore.release();
+      await newcomer;
+      expect(semaphore.inFlight, lessThanOrEqualTo(1));
+    });
+
+    test('a slot is handed over to a waiter', () async {
+      final semaphore = CountingSemaphore(1);
+      await semaphore.acquire();
+
+      var second = false;
+      final waiting = semaphore.acquire().then((_) => second = true);
+      await Future<void>.delayed(Duration.zero);
+      expect(second, isFalse);
+
+      semaphore.release();
+      await waiting;
+      expect(second, isTrue);
+    });
+  });
+
   group('fetchInParallel', () {
     test('reassembles the bytes in the original order', () async {
       final data = Uint8List.fromList(List<int>.generate(1000, (i) => i % 256));
@@ -117,6 +158,25 @@ void main() {
       for (var i = 1; i < progress.length; i++) {
         expect(progress[i], greaterThanOrEqualTo(progress[i - 1]));
       }
+    });
+
+    test('never runs more requests than the limit under contention', () async {
+      final data = Uint8List.fromList(List<int>.filled(500, 9));
+      final server = _FakeServer(data);
+
+      final stream = await fetchInParallel(
+        fetch: server.fetch,
+        totalBytes: data.length,
+        chunkSize: 10,
+        parallelism: 3,
+      );
+      await stream.drain<void>();
+
+      // The semaphore hands the slot over to a waiter instead of giving it
+      // back first, so the number of requests in flight never grows past the
+      // limit — not even when the requests finish at the same time.
+      expect(server.requested.length, 50);
+      expect(server.maxInFlight, lessThanOrEqualTo(3));
     });
 
     test('an empty object yields an empty stream', () async {

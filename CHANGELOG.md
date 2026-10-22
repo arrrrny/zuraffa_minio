@@ -1,10 +1,22 @@
+# 0.2.3
+
+- the counting semaphore of the parallel download is covered by a test now.
+  The test fails against the implementation of 0.2.1 and 0.2.2: that one gave
+  the slot back before it handed it over, so a caller that arrived in the
+  middle of the handover could take a second slot and push the number of
+  requests in flight past the limit.
+- the wording of the 0.2.2 entry overstated how reachable that problem was:
+  the parallel download asks for all of its ranges up front, so the window was
+  never open on that path. The fix stays, and it is now covered by a test.
+
+---
+
 # 0.2.2
 
-- the parallel transfers respect their limit exactly. The semaphore that caps
-  the number of requests in flight handed the slot over to a waiter and only
-  gave it back when no waiter was left, so `getObject(parallelism: n)` and
-  `putObject(maxParallelUploads: n)` could run `n + 1` requests at the same
-  time under contention.
+- the counting semaphore that caps the number of requests in flight hands the
+  slot over to the next waiter instead of giving it back first, so the number
+  of slots in use never grows past the limit when a caller arrives in the
+  middle of a handover.
 - the parallel multipart upload remembers the failure of a part instead of
   letting it propagate. The parts that are still in flight no longer end up
   as unhandled errors, and the first failure is rethrown once the bounded
