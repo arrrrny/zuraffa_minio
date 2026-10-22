@@ -1,12 +1,19 @@
-import 'package:minio/io.dart';
-import 'package:minio/minio.dart';
+import 'package:zuraffa_minio/io.dart';
+import 'package:zuraffa_minio/minio.dart';
 
+/// A tour of the API against a local MinIO server.
+///
+/// ```sh
+/// minio server /tmp/minio-data --address 127.0.0.1:9000
+/// dart run example/minio_example.dart
+/// ```
 void main() async {
   final minio = Minio(
-    endPoint: 'play.min.io',
-    accessKey: 'Q3AM3UQ867SPQQA43P2F',
-    secretKey: 'zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG',
-    useSSL: true,
+    endPoint: '127.0.0.1',
+    port: 9000,
+    accessKey: 'minioadmin',
+    secretKey: 'minioadmin',
+    useSSL: false,
     // enableTrace: true,
   );
 
@@ -24,9 +31,7 @@ void main() async {
 
   final poller = minio.listenBucketNotification(
     bucket,
-    events: [
-      's3:ObjectCreated:*',
-    ],
+    events: ['s3:ObjectCreated:*'],
   );
   poller.stream.listen((event) {
     print('--- event: ${event['eventName']}');

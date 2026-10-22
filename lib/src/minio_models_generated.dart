@@ -8,23 +8,100 @@ XmlElement? getProp(XmlElement? xml, String name) {
   return result.isNotEmpty ? result.first : null;
 }
 
+/// The `<Xxxs>` element of a model holds one child element per item.
+List<T>? listFromXml<T>(
+  XmlElement? xml,
+  String itemName,
+  T Function(XmlElement? xml) parse,
+) {
+  if (xml == null) return null;
+  final items = <T>[];
+  for (final child in xml.findElements(itemName)) {
+    items.add(parse(child));
+  }
+  return items;
+}
+
+/// The events of a notification configuration are one `<Event>` element per
+/// event, directly under the configuration. A server that writes them as the
+/// text of a single `<Events>` element is read as well.
+List<String>? eventsFromXml(XmlElement? xml) {
+  if (xml == null) return null;
+  final events = <String>[];
+  for (final event in xml.findElements('Event')) {
+    events.add(event.text);
+  }
+  if (events.isEmpty) {
+    final wrapper = getProp(xml, 'Events');
+    if (wrapper != null) {
+      for (final event in wrapper.findElements('Event')) {
+        events.add(event.text);
+      }
+      if (events.isEmpty) {
+        final text = wrapper.text.trim();
+        if (text.isNotEmpty) {
+          events.add(text);
+        }
+      }
+    }
+  }
+  return events;
+}
+
+/// The configurations of a notification configuration are the direct children
+/// of the `<NotificationConfiguration>` element, one element per
+/// configuration.
+///
+/// A server that wraps them in an element of their own is read as well, so a
+/// document written by an older version of this package is not lost.
+List<T>? configurationsFromXml<T>(
+  XmlElement? xml,
+  String elementName,
+  T Function(XmlElement? xml) parse, {
+  String? wrapperName,
+  String? wrapperItemName,
+}) {
+  if (xml == null) return null;
+  final configurations = <T>[];
+  for (final child in xml.findElements(elementName)) {
+    configurations.add(parse(child));
+  }
+  if (configurations.isEmpty && wrapperName != null) {
+    final wrapper = getProp(xml, wrapperName);
+    if (wrapper != null) {
+      for (final child in wrapper.findElements(
+        wrapperItemName ?? elementName,
+      )) {
+        configurations.add(parse(child));
+      }
+    }
+  }
+  return configurations;
+}
+
 /// Specifies the days since the initiation of an incomplete multipart upload that Amazon S3 will wait before permanently removing all parts of the upload. For more information, see Aborting Incomplete Multipart Uploads Using a Bucket Lifecycle Policy in the Amazon Simple Storage Service Developer Guide.
 class AbortIncompleteMultipartUpload {
-  AbortIncompleteMultipartUpload(
-    this.daysAfterInitiation,
-  );
+  AbortIncompleteMultipartUpload(this.daysAfterInitiation);
 
   AbortIncompleteMultipartUpload.fromXml(XmlElement? xml) {
-    daysAfterInitiation =
-        int.tryParse(getProp(xml, 'DaysAfterInitiation')!.text);
+    daysAfterInitiation = int.tryParse(
+      getProp(xml, 'DaysAfterInitiation')?.text ?? '',
+    );
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('AbortIncompleteMultipartUpload', nest: () {
-      builder.element('DaysAfterInitiation',
-          nest: daysAfterInitiation.toString());
-    });
+    builder.element(
+      'AbortIncompleteMultipartUpload',
+      nest: () {
+        if (daysAfterInitiation != null) {
+          builder.element(
+            'DaysAfterInitiation',
+            nest: daysAfterInitiation.toString(),
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -34,19 +111,22 @@ class AbortIncompleteMultipartUpload {
 
 /// Configures the transfer acceleration state for an Amazon S3 bucket. For more information, see Amazon S3 Transfer Acceleration in the Amazon Simple Storage Service Developer Guide.
 class AccelerateConfiguration {
-  AccelerateConfiguration(
-    this.status,
-  );
+  AccelerateConfiguration(this.status);
 
-  AccelerateConfiguration.fromXml(XmlElement xml) {
+  AccelerateConfiguration.fromXml(XmlElement? xml) {
     status = getProp(xml, 'Status')?.text;
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('AccelerateConfiguration', nest: () {
-      builder.element('Status', nest: status);
-    });
+    builder.element(
+      'AccelerateConfiguration',
+      nest: () {
+        if (status != null) {
+          builder.element('Status', nest: status);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -56,10 +136,7 @@ class AccelerateConfiguration {
 
 /// Contains the elements that set the ACL permissions for an object per grantee.
 class AccessControlPolicy {
-  AccessControlPolicy(
-    this.grants,
-    this.owner,
-  );
+  AccessControlPolicy(this.grants, this.owner);
 
   AccessControlPolicy.fromXml(XmlElement? xml) {
     grants = Grant.fromXml(getProp(xml, 'Grants'));
@@ -68,10 +145,24 @@ class AccessControlPolicy {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('AccessControlPolicy', nest: () {
-      builder.element('Grants', nest: grants!.toXml());
-      builder.element('Owner', nest: owner!.toXml());
-    });
+    builder.element(
+      'AccessControlPolicy',
+      nest: () {
+        if (grants != null) {
+          builder.element(
+            'Grants',
+            nest: (grants!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (owner != null) {
+          builder.element(
+            'Owner',
+            nest: (owner!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -84,9 +175,7 @@ class AccessControlPolicy {
 
 /// A container for information about access control for replicas.
 class AccessControlTranslation {
-  AccessControlTranslation(
-    this.owner,
-  );
+  AccessControlTranslation(this.owner);
 
   AccessControlTranslation.fromXml(XmlElement? xml) {
     owner = getProp(xml, 'Owner')?.text;
@@ -94,9 +183,14 @@ class AccessControlTranslation {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('AccessControlTranslation', nest: () {
-      builder.element('Owner', nest: owner);
-    });
+    builder.element(
+      'AccessControlTranslation',
+      nest: () {
+        if (owner != null) {
+          builder.element('Owner', nest: owner);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -106,10 +200,7 @@ class AccessControlTranslation {
 
 /// A conjunction (logical AND) of predicates, which is used in evaluating a metrics filter. The operator must have at least two predicates in any combination, and an object must match all of the predicates for the filter to apply.
 class AnalyticsAndOperator {
-  AnalyticsAndOperator(
-    this.prefix,
-    this.tags,
-  );
+  AnalyticsAndOperator(this.prefix, this.tags);
 
   AnalyticsAndOperator.fromXml(XmlElement? xml) {
     prefix = getProp(xml, 'Prefix')?.text;
@@ -118,10 +209,21 @@ class AnalyticsAndOperator {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('AnalyticsAndOperator', nest: () {
-      builder.element('Prefix', nest: prefix);
-      builder.element('Tags', nest: tags!.toXml());
-    });
+    builder.element(
+      'AnalyticsAndOperator',
+      nest: () {
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (tags != null) {
+          builder.element(
+            'Tags',
+            nest: (tags!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -134,27 +236,42 @@ class AnalyticsAndOperator {
 
 ///  Specifies the configuration and any analyses for the analytics filter of an Amazon S3 bucket.
 class AnalyticsConfiguration {
-  AnalyticsConfiguration(
-    this.filter,
-    this.id,
-    this.storageClassAnalysis,
-  );
+  AnalyticsConfiguration(this.filter, this.id, this.storageClassAnalysis);
 
-  AnalyticsConfiguration.fromXml(XmlElement xml) {
+  AnalyticsConfiguration.fromXml(XmlElement? xml) {
     filter = AnalyticsFilter.fromXml(getProp(xml, 'Filter'));
     id = getProp(xml, 'Id')?.text;
-    storageClassAnalysis =
-        StorageClassAnalysis.fromXml(getProp(xml, 'StorageClassAnalysis'));
+    storageClassAnalysis = StorageClassAnalysis.fromXml(
+      getProp(xml, 'StorageClassAnalysis'),
+    );
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('AnalyticsConfiguration', nest: () {
-      builder.element('Filter', nest: filter!.toXml());
-      builder.element('Id', nest: id);
-      builder.element('StorageClassAnalysis',
-          nest: storageClassAnalysis!.toXml());
-    });
+    builder.element(
+      'AnalyticsConfiguration',
+      nest: () {
+        if (filter != null) {
+          builder.element(
+            'Filter',
+            nest: (filter!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (id != null) {
+          builder.element('Id', nest: id);
+        }
+
+        if (storageClassAnalysis != null) {
+          builder.element(
+            'StorageClassAnalysis',
+            nest: (storageClassAnalysis!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -170,21 +287,29 @@ class AnalyticsConfiguration {
 
 /// Where to publish the analytics results.
 class AnalyticsExportDestination {
-  AnalyticsExportDestination(
-    this.s3BucketDestination,
-  );
+  AnalyticsExportDestination(this.s3BucketDestination);
 
   AnalyticsExportDestination.fromXml(XmlElement? xml) {
     s3BucketDestination = AnalyticsS3BucketDestination.fromXml(
-        getProp(xml, 'S3BucketDestination'));
+      getProp(xml, 'S3BucketDestination'),
+    );
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('AnalyticsExportDestination', nest: () {
-      builder.element('S3BucketDestination',
-          nest: s3BucketDestination!.toXml());
-    });
+    builder.element(
+      'AnalyticsExportDestination',
+      nest: () {
+        if (s3BucketDestination != null) {
+          builder.element(
+            'S3BucketDestination',
+            nest: (s3BucketDestination!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -194,11 +319,7 @@ class AnalyticsExportDestination {
 
 /// The filter used to describe a set of objects for analyses. A filter must have exactly one prefix, one tag, or one conjunction (AnalyticsAndOperator). If no filter is provided, all objects will be considered in any analysis.
 class AnalyticsFilter {
-  AnalyticsFilter(
-    this.and,
-    this.prefix,
-    this.tag,
-  );
+  AnalyticsFilter(this.and, this.prefix, this.tag);
 
   AnalyticsFilter.fromXml(XmlElement? xml) {
     and = AnalyticsAndOperator.fromXml(getProp(xml, 'And'));
@@ -208,11 +329,28 @@ class AnalyticsFilter {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('AnalyticsFilter', nest: () {
-      builder.element('And', nest: and!.toXml());
-      builder.element('Prefix', nest: prefix);
-      builder.element('Tag', nest: tag!.toXml());
-    });
+    builder.element(
+      'AnalyticsFilter',
+      nest: () {
+        if (and != null) {
+          builder.element(
+            'And',
+            nest: (and!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (tag != null) {
+          builder.element(
+            'Tag',
+            nest: (tag!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -244,12 +382,26 @@ class AnalyticsS3BucketDestination {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('AnalyticsS3BucketDestination', nest: () {
-      builder.element('Bucket', nest: bucket);
-      builder.element('BucketAccountId', nest: bucketAccountId);
-      builder.element('Format', nest: format);
-      builder.element('Prefix', nest: prefix);
-    });
+    builder.element(
+      'AnalyticsS3BucketDestination',
+      nest: () {
+        if (bucket != null) {
+          builder.element('Bucket', nest: bucket);
+        }
+
+        if (bucketAccountId != null) {
+          builder.element('BucketAccountId', nest: bucketAccountId);
+        }
+
+        if (format != null) {
+          builder.element('Format', nest: format);
+        }
+
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -268,24 +420,30 @@ class AnalyticsS3BucketDestination {
 
 ///  In terms of implementation, a Bucket is a resource. An Amazon S3 bucket name is globally unique, and the namespace is shared by all AWS accounts.
 class Bucket {
-  Bucket(
-    this.creationDate,
-    this.name,
-  );
+  Bucket(this.creationDate, this.name);
 
-  factory Bucket.fromXml(XmlElement xml) {
+  factory Bucket.fromXml(XmlElement? xml) {
     return Bucket(
-      DateTime.parse(getProp(xml, 'CreationDate')!.text),
+      DateTime.tryParse(getProp(xml, 'CreationDate')?.text ?? ''),
       getProp(xml, 'Name')!.text,
     );
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('Bucket', nest: () {
-      builder.element('CreationDate', nest: creationDate!.toIso8601String());
-      builder.element('Name', nest: name);
-    });
+    builder.element(
+      'Bucket',
+      nest: () {
+        if (creationDate != null) {
+          builder.element(
+            'CreationDate',
+            nest: creationDate!.toIso8601String(),
+          );
+        }
+
+        builder.element('Name', nest: name);
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -303,19 +461,25 @@ class Bucket {
 
 /// Specifies the lifecycle configuration for objects in an Amazon S3 bucket. For more information, see Object Lifecycle Management in the Amazon Simple Storage Service Developer Guide.
 class BucketLifecycleConfiguration {
-  BucketLifecycleConfiguration(
-    this.rules,
-  );
+  BucketLifecycleConfiguration(this.rules);
 
-  BucketLifecycleConfiguration.fromXml(XmlElement xml) {
+  BucketLifecycleConfiguration.fromXml(XmlElement? xml) {
     rules = LifecycleRule.fromXml(getProp(xml, 'Rules'));
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('BucketLifecycleConfiguration', nest: () {
-      builder.element('Rules', nest: rules!.toXml());
-    });
+    builder.element(
+      'BucketLifecycleConfiguration',
+      nest: () {
+        if (rules != null) {
+          builder.element(
+            'Rules',
+            nest: (rules!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -325,19 +489,25 @@ class BucketLifecycleConfiguration {
 
 /// Container for logging status information.
 class BucketLoggingStatus {
-  BucketLoggingStatus(
-    this.loggingEnabled,
-  );
+  BucketLoggingStatus(this.loggingEnabled);
 
-  BucketLoggingStatus.fromXml(XmlElement xml) {
+  BucketLoggingStatus.fromXml(XmlElement? xml) {
     loggingEnabled = LoggingEnabled.fromXml(getProp(xml, 'LoggingEnabled'));
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('BucketLoggingStatus', nest: () {
-      builder.element('LoggingEnabled', nest: loggingEnabled!.toXml());
-    });
+    builder.element(
+      'BucketLoggingStatus',
+      nest: () {
+        if (loggingEnabled != null) {
+          builder.element(
+            'LoggingEnabled',
+            nest: (loggingEnabled!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -365,13 +535,30 @@ class CloudFunctionConfiguration {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('CloudFunctionConfiguration', nest: () {
-      builder.element('CloudFunction', nest: cloudFunction);
-      builder.element('Event', nest: event);
-      builder.element('Events', nest: events);
-      builder.element('Id', nest: id);
-      builder.element('InvocationRole', nest: invocationRole);
-    });
+    builder.element(
+      'CloudFunctionConfiguration',
+      nest: () {
+        if (cloudFunction != null) {
+          builder.element('CloudFunction', nest: cloudFunction);
+        }
+
+        if (event != null) {
+          builder.element('Event', nest: event);
+        }
+
+        if (events != null) {
+          builder.element('Events', nest: events);
+        }
+
+        if (id != null) {
+          builder.element('Id', nest: id);
+        }
+
+        if (invocationRole != null) {
+          builder.element('InvocationRole', nest: invocationRole);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -393,19 +580,22 @@ class CloudFunctionConfiguration {
 
 /// Container for all (if there are any) keys between Prefix and the next occurrence of the string specified by a delimiter. CommonPrefixes lists keys that act like subdirectories in the directory specified by Prefix. For example, if the prefix is notes/ and the delimiter is a slash (/) as in notes/summer/july, the common prefix is notes/summer/.
 class CommonPrefix {
-  CommonPrefix(
-    this.prefix,
-  );
+  CommonPrefix(this.prefix);
 
-  CommonPrefix.fromXml(XmlElement xml) {
+  CommonPrefix.fromXml(XmlElement? xml) {
     prefix = getProp(xml, 'Prefix')?.text;
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('CommonPrefix', nest: () {
-      builder.element('Prefix', nest: prefix);
-    });
+    builder.element(
+      'CommonPrefix',
+      nest: () {
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -415,19 +605,25 @@ class CommonPrefix {
 
 /// The container for the completed multipart upload details.
 class CompletedMultipartUpload {
-  CompletedMultipartUpload(
-    this.parts,
-  );
+  CompletedMultipartUpload(this.parts);
 
-  CompletedMultipartUpload.fromXml(XmlElement xml) {
+  CompletedMultipartUpload.fromXml(XmlElement? xml) {
     parts = CompletedPart.fromXml(getProp(xml, 'Parts'));
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('CompletedMultipartUpload', nest: () {
-      builder.element('Parts', nest: parts!.toXml());
-    });
+    builder.element(
+      'CompletedMultipartUpload',
+      nest: () {
+        if (parts != null) {
+          builder.element(
+            'Parts',
+            nest: (parts!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -437,22 +633,27 @@ class CompletedMultipartUpload {
 
 /// Details of the parts that were uploaded.
 class CompletedPart {
-  CompletedPart(
-    this.eTag,
-    this.partNumber,
-  );
+  CompletedPart(this.eTag, this.partNumber);
 
   CompletedPart.fromXml(XmlElement? xml) {
     eTag = getProp(xml, 'ETag')?.text;
-    partNumber = int.tryParse(getProp(xml, 'PartNumber')!.text);
+    partNumber = int.tryParse(getProp(xml, 'PartNumber')?.text ?? '');
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('Part', nest: () {
-      builder.element('ETag', nest: eTag);
-      builder.element('PartNumber', nest: partNumber.toString());
-    });
+    builder.element(
+      'Part',
+      nest: () {
+        if (eTag != null) {
+          builder.element('ETag', nest: eTag);
+        }
+
+        if (partNumber != null) {
+          builder.element('PartNumber', nest: partNumber.toString());
+        }
+      },
+    );
     return builder.buildDocument().rootElement;
   }
 
@@ -465,24 +666,33 @@ class CompletedPart {
 
 /// A container for describing a condition that must be met for the specified redirect to apply. For example, 1. If request is for pages in the /docs folder, redirect to the /documents folder. 2. If request results in HTTP error 4xx, redirect request to another host where you might process the error.
 class Condition {
-  Condition(
-    this.httpErrorCodeReturnedEquals,
-    this.keyPrefixEquals,
-  );
+  Condition(this.httpErrorCodeReturnedEquals, this.keyPrefixEquals);
 
   Condition.fromXml(XmlElement? xml) {
-    httpErrorCodeReturnedEquals =
-        getProp(xml, 'HttpErrorCodeReturnedEquals')?.text;
+    httpErrorCodeReturnedEquals = getProp(
+      xml,
+      'HttpErrorCodeReturnedEquals',
+    )?.text;
     keyPrefixEquals = getProp(xml, 'KeyPrefixEquals')?.text;
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('Condition', nest: () {
-      builder.element('HttpErrorCodeReturnedEquals',
-          nest: httpErrorCodeReturnedEquals);
-      builder.element('KeyPrefixEquals', nest: keyPrefixEquals);
-    });
+    builder.element(
+      'Condition',
+      nest: () {
+        if (httpErrorCodeReturnedEquals != null) {
+          builder.element(
+            'HttpErrorCodeReturnedEquals',
+            nest: httpErrorCodeReturnedEquals,
+          );
+        }
+
+        if (keyPrefixEquals != null) {
+          builder.element('KeyPrefixEquals', nest: keyPrefixEquals);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -508,22 +718,30 @@ class ContinuationEvent {
 
 /// Container for all response elements.
 class CopyObjectResult {
-  CopyObjectResult(
-    this.eTag,
-    this.lastModified,
-  );
+  CopyObjectResult(this.eTag, this.lastModified);
 
-  CopyObjectResult.fromXml(XmlElement xml) {
+  CopyObjectResult.fromXml(XmlElement? xml) {
     eTag = getProp(xml, 'ETag')?.text;
-    lastModified = DateTime.parse(getProp(xml, 'LastModified')!.text);
+    lastModified = DateTime.tryParse(getProp(xml, 'LastModified')?.text ?? '');
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('CopyObjectResult', nest: () {
-      builder.element('ETag', nest: eTag);
-      builder.element('LastModified', nest: lastModified!.toIso8601String());
-    });
+    builder.element(
+      'CopyObjectResult',
+      nest: () {
+        if (eTag != null) {
+          builder.element('ETag', nest: eTag);
+        }
+
+        if (lastModified != null) {
+          builder.element(
+            'LastModified',
+            nest: lastModified!.toIso8601String(),
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -536,22 +754,30 @@ class CopyObjectResult {
 
 /// Container for all response elements.
 class CopyPartResult {
-  CopyPartResult(
-    this.eTag,
-    this.lastModified,
-  );
+  CopyPartResult(this.eTag, this.lastModified);
 
-  CopyPartResult.fromXml(XmlElement xml) {
+  CopyPartResult.fromXml(XmlElement? xml) {
     eTag = getProp(xml, 'ETag')?.text;
-    lastModified = DateTime.parse(getProp(xml, 'LastModified')!.text);
+    lastModified = DateTime.tryParse(getProp(xml, 'LastModified')?.text ?? '');
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('CopyPartResult', nest: () {
-      builder.element('ETag', nest: eTag);
-      builder.element('LastModified', nest: lastModified!.toIso8601String());
-    });
+    builder.element(
+      'CopyPartResult',
+      nest: () {
+        if (eTag != null) {
+          builder.element('ETag', nest: eTag);
+        }
+
+        if (lastModified != null) {
+          builder.element(
+            'LastModified',
+            nest: lastModified!.toIso8601String(),
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -564,19 +790,25 @@ class CopyPartResult {
 
 /// Describes the cross-origin access configuration for objects in an Amazon S3 bucket. For more information, see Enabling Cross-Origin Resource Sharing in the Amazon Simple Storage Service Developer Guide.
 class CORSConfiguration {
-  CORSConfiguration(
-    this.cORSRules,
-  );
+  CORSConfiguration(this.cORSRules);
 
-  CORSConfiguration.fromXml(XmlElement xml) {
+  CORSConfiguration.fromXml(XmlElement? xml) {
     cORSRules = CORSRule.fromXml(getProp(xml, 'CORSRules'));
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('CORSConfiguration', nest: () {
-      builder.element('CORSRules', nest: cORSRules!.toXml());
-    });
+    builder.element(
+      'CORSConfiguration',
+      nest: () {
+        if (cORSRules != null) {
+          builder.element(
+            'CORSRules',
+            nest: (cORSRules!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -599,18 +831,35 @@ class CORSRule {
     allowedMethods = getProp(xml, 'AllowedMethods')?.text;
     allowedOrigins = getProp(xml, 'AllowedOrigins')?.text;
     exposeHeaders = getProp(xml, 'ExposeHeaders')?.text;
-    maxAgeSeconds = int.tryParse(getProp(xml, 'MaxAgeSeconds')!.text);
+    maxAgeSeconds = int.tryParse(getProp(xml, 'MaxAgeSeconds')?.text ?? '');
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('CORSRule', nest: () {
-      builder.element('AllowedHeaders', nest: allowedHeaders);
-      builder.element('AllowedMethods', nest: allowedMethods);
-      builder.element('AllowedOrigins', nest: allowedOrigins);
-      builder.element('ExposeHeaders', nest: exposeHeaders);
-      builder.element('MaxAgeSeconds', nest: maxAgeSeconds.toString());
-    });
+    builder.element(
+      'CORSRule',
+      nest: () {
+        if (allowedHeaders != null) {
+          builder.element('AllowedHeaders', nest: allowedHeaders);
+        }
+
+        if (allowedMethods != null) {
+          builder.element('AllowedMethods', nest: allowedMethods);
+        }
+
+        if (allowedOrigins != null) {
+          builder.element('AllowedOrigins', nest: allowedOrigins);
+        }
+
+        if (exposeHeaders != null) {
+          builder.element('ExposeHeaders', nest: exposeHeaders);
+        }
+
+        if (maxAgeSeconds != null) {
+          builder.element('MaxAgeSeconds', nest: maxAgeSeconds.toString());
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -632,19 +881,22 @@ class CORSRule {
 
 /// The configuration information for the bucket.
 class CreateBucketConfiguration {
-  CreateBucketConfiguration(
-    this.locationConstraint,
-  );
+  CreateBucketConfiguration(this.locationConstraint);
 
-  CreateBucketConfiguration.fromXml(XmlElement xml) {
+  CreateBucketConfiguration.fromXml(XmlElement? xml) {
     locationConstraint = getProp(xml, 'LocationConstraint')?.text;
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('CreateBucketConfiguration', nest: () {
-      builder.element('LocationConstraint', nest: locationConstraint);
-    });
+    builder.element(
+      'CreateBucketConfiguration',
+      nest: () {
+        if (locationConstraint != null) {
+          builder.element('LocationConstraint', nest: locationConstraint);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -667,7 +919,7 @@ class CSVInput {
   CSVInput.fromXml(XmlElement? xml) {
     allowQuotedRecordDelimiter =
         getProp(xml, 'AllowQuotedRecordDelimiter')?.text.toUpperCase() ==
-            'TRUE';
+        'TRUE';
     comments = getProp(xml, 'Comments')?.text;
     fieldDelimiter = getProp(xml, 'FieldDelimiter')?.text;
     fileHeaderInfo = getProp(xml, 'FileHeaderInfo')?.text;
@@ -678,16 +930,41 @@ class CSVInput {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('CSVInput', nest: () {
-      builder.element('AllowQuotedRecordDelimiter',
-          nest: allowQuotedRecordDelimiter! ? 'TRUE' : 'FALSE');
-      builder.element('Comments', nest: comments);
-      builder.element('FieldDelimiter', nest: fieldDelimiter);
-      builder.element('FileHeaderInfo', nest: fileHeaderInfo);
-      builder.element('QuoteCharacter', nest: quoteCharacter);
-      builder.element('QuoteEscapeCharacter', nest: quoteEscapeCharacter);
-      builder.element('RecordDelimiter', nest: recordDelimiter);
-    });
+    builder.element(
+      'CSVInput',
+      nest: () {
+        if (allowQuotedRecordDelimiter != null) {
+          builder.element(
+            'AllowQuotedRecordDelimiter',
+            nest: allowQuotedRecordDelimiter! ? 'TRUE' : 'FALSE',
+          );
+        }
+
+        if (comments != null) {
+          builder.element('Comments', nest: comments);
+        }
+
+        if (fieldDelimiter != null) {
+          builder.element('FieldDelimiter', nest: fieldDelimiter);
+        }
+
+        if (fileHeaderInfo != null) {
+          builder.element('FileHeaderInfo', nest: fileHeaderInfo);
+        }
+
+        if (quoteCharacter != null) {
+          builder.element('QuoteCharacter', nest: quoteCharacter);
+        }
+
+        if (quoteEscapeCharacter != null) {
+          builder.element('QuoteEscapeCharacter', nest: quoteEscapeCharacter);
+        }
+
+        if (recordDelimiter != null) {
+          builder.element('RecordDelimiter', nest: recordDelimiter);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -733,13 +1010,30 @@ class CSVOutput {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('CSVOutput', nest: () {
-      builder.element('FieldDelimiter', nest: fieldDelimiter);
-      builder.element('QuoteCharacter', nest: quoteCharacter);
-      builder.element('QuoteEscapeCharacter', nest: quoteEscapeCharacter);
-      builder.element('QuoteFields', nest: quoteFields);
-      builder.element('RecordDelimiter', nest: recordDelimiter);
-    });
+    builder.element(
+      'CSVOutput',
+      nest: () {
+        if (fieldDelimiter != null) {
+          builder.element('FieldDelimiter', nest: fieldDelimiter);
+        }
+
+        if (quoteCharacter != null) {
+          builder.element('QuoteCharacter', nest: quoteCharacter);
+        }
+
+        if (quoteEscapeCharacter != null) {
+          builder.element('QuoteEscapeCharacter', nest: quoteEscapeCharacter);
+        }
+
+        if (quoteFields != null) {
+          builder.element('QuoteFields', nest: quoteFields);
+        }
+
+        if (recordDelimiter != null) {
+          builder.element('RecordDelimiter', nest: recordDelimiter);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -761,25 +1055,32 @@ class CSVOutput {
 
 /// The container element for specifying the default Object Lock retention settings for new objects placed in the specified bucket.
 class DefaultRetention {
-  DefaultRetention(
-    this.days,
-    this.mode,
-    this.years,
-  );
+  DefaultRetention(this.days, this.mode, this.years);
 
   DefaultRetention.fromXml(XmlElement? xml) {
-    days = int.tryParse(getProp(xml, 'Days')!.text);
+    days = int.tryParse(getProp(xml, 'Days')?.text ?? '');
     mode = getProp(xml, 'Mode')?.text;
-    years = int.tryParse(getProp(xml, 'Years')!.text);
+    years = int.tryParse(getProp(xml, 'Years')?.text ?? '');
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('DefaultRetention', nest: () {
-      builder.element('Days', nest: days.toString());
-      builder.element('Mode', nest: mode);
-      builder.element('Years', nest: years.toString());
-    });
+    builder.element(
+      'DefaultRetention',
+      nest: () {
+        if (days != null) {
+          builder.element('Days', nest: days.toString());
+        }
+
+        if (mode != null) {
+          builder.element('Mode', nest: mode);
+        }
+
+        if (years != null) {
+          builder.element('Years', nest: years.toString());
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -795,24 +1096,24 @@ class DefaultRetention {
 
 /// Container for the objects to delete.
 class Delete {
-  Delete(
-    this.objects,
-    this.quiet,
-  );
+  Delete(this.objects, this.quiet);
 
-  // Delete.fromXml(XmlElement xml) {
+  // Delete.fromXml(XmlElement? xml) {
   //   objects = ObjectIdentifier.fromXml(getProp(xml, 'Objects'));
   //   quiet = getProp(xml, 'Quiet')?.text?.toUpperCase() == 'TRUE';
   // }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('Delete', nest: () {
-      for (var object in objects) {
-        builder.element('Object', nest: object.toXml().children);
-      }
-      builder.element('Quiet', nest: quiet ? 'TRUE' : 'FALSE');
-    });
+    builder.element(
+      'Delete',
+      nest: () {
+        for (var object in objects) {
+          builder.element('Object', nest: object.toXml().children);
+        }
+        builder.element('Quiet', nest: quiet ? 'TRUE' : 'FALSE');
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -832,7 +1133,7 @@ class DeletedObject {
     this.versionId,
   );
 
-  DeletedObject.fromXml(XmlElement xml) {
+  DeletedObject.fromXml(XmlElement? xml) {
     deleteMarker = getProp(xml, 'DeleteMarker')?.text.toUpperCase() == 'TRUE';
     deleteMarkerVersionId = getProp(xml, 'DeleteMarkerVersionId')?.text;
     key = getProp(xml, 'Key')?.text;
@@ -841,12 +1142,29 @@ class DeletedObject {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('DeletedObject', nest: () {
-      builder.element('DeleteMarker', nest: deleteMarker! ? 'TRUE' : 'FALSE');
-      builder.element('DeleteMarkerVersionId', nest: deleteMarkerVersionId);
-      builder.element('Key', nest: key);
-      builder.element('VersionId', nest: versionId);
-    });
+    builder.element(
+      'DeletedObject',
+      nest: () {
+        if (deleteMarker != null) {
+          builder.element(
+            'DeleteMarker',
+            nest: deleteMarker! ? 'TRUE' : 'FALSE',
+          );
+        }
+
+        if (deleteMarkerVersionId != null) {
+          builder.element('DeleteMarkerVersionId', nest: deleteMarkerVersionId);
+        }
+
+        if (key != null) {
+          builder.element('Key', nest: key);
+        }
+
+        if (versionId != null) {
+          builder.element('VersionId', nest: versionId);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -873,23 +1191,46 @@ class DeleteMarkerEntry {
     this.versionId,
   );
 
-  DeleteMarkerEntry.fromXml(XmlElement xml) {
+  DeleteMarkerEntry.fromXml(XmlElement? xml) {
     isLatest = getProp(xml, 'IsLatest')?.text.toUpperCase() == 'TRUE';
     key = getProp(xml, 'Key')?.text;
-    lastModified = DateTime.parse(getProp(xml, 'LastModified')!.text);
+    lastModified = DateTime.tryParse(getProp(xml, 'LastModified')?.text ?? '');
     owner = Owner.fromXml(getProp(xml, 'Owner'));
     versionId = getProp(xml, 'VersionId')?.text;
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('DeleteMarkerEntry', nest: () {
-      builder.element('IsLatest', nest: isLatest! ? 'TRUE' : 'FALSE');
-      builder.element('Key', nest: key);
-      builder.element('LastModified', nest: lastModified!.toIso8601String());
-      builder.element('Owner', nest: owner!.toXml());
-      builder.element('VersionId', nest: versionId);
-    });
+    builder.element(
+      'DeleteMarkerEntry',
+      nest: () {
+        if (isLatest != null) {
+          builder.element('IsLatest', nest: isLatest! ? 'TRUE' : 'FALSE');
+        }
+
+        if (key != null) {
+          builder.element('Key', nest: key);
+        }
+
+        if (lastModified != null) {
+          builder.element(
+            'LastModified',
+            nest: lastModified!.toIso8601String(),
+          );
+        }
+
+        if (owner != null) {
+          builder.element(
+            'Owner',
+            nest: (owner!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (versionId != null) {
+          builder.element('VersionId', nest: versionId);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -911,9 +1252,7 @@ class DeleteMarkerEntry {
 
 /// Specifies whether Amazon S3 replicates the delete markers. If you specify a Filter, you must specify this element. However, in the latest version of replication configuration (when Filter is specified), Amazon S3 doesn't replicate delete markers. Therefore, the DeleteMarkerReplication element can contain only <Status>Disabled</Status>. For an example configuration, see Basic Rule Configuration.
 class DeleteMarkerReplication {
-  DeleteMarkerReplication(
-    this.status,
-  );
+  DeleteMarkerReplication(this.status);
 
   DeleteMarkerReplication.fromXml(XmlElement? xml) {
     status = getProp(xml, 'Status')?.text;
@@ -921,9 +1260,14 @@ class DeleteMarkerReplication {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('DeleteMarkerReplication', nest: () {
-      builder.element('Status', nest: status);
-    });
+    builder.element(
+      'DeleteMarkerReplication',
+      nest: () {
+        if (status != null) {
+          builder.element('Status', nest: status);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -945,11 +1289,13 @@ class Destination {
 
   Destination.fromXml(XmlElement? xml) {
     accessControlTranslation = AccessControlTranslation.fromXml(
-        getProp(xml, 'AccessControlTranslation'));
+      getProp(xml, 'AccessControlTranslation'),
+    );
     account = getProp(xml, 'Account')?.text;
     bucket = getProp(xml, 'Bucket')?.text;
     encryptionConfiguration = EncryptionConfiguration.fromXml(
-        getProp(xml, 'EncryptionConfiguration'));
+      getProp(xml, 'EncryptionConfiguration'),
+    );
     metrics = Metrics.fromXml(getProp(xml, 'Metrics'));
     replicationTime = ReplicationTime.fromXml(getProp(xml, 'ReplicationTime'));
     storageClass = getProp(xml, 'StorageClass')?.text;
@@ -957,17 +1303,55 @@ class Destination {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('Destination', nest: () {
-      builder.element('AccessControlTranslation',
-          nest: accessControlTranslation!.toXml());
-      builder.element('Account', nest: account);
-      builder.element('Bucket', nest: bucket);
-      builder.element('EncryptionConfiguration',
-          nest: encryptionConfiguration!.toXml());
-      builder.element('Metrics', nest: metrics!.toXml());
-      builder.element('ReplicationTime', nest: replicationTime!.toXml());
-      builder.element('StorageClass', nest: storageClass);
-    });
+    builder.element(
+      'Destination',
+      nest: () {
+        if (accessControlTranslation != null) {
+          builder.element(
+            'AccessControlTranslation',
+            nest: (accessControlTranslation!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (account != null) {
+          builder.element('Account', nest: account);
+        }
+
+        if (bucket != null) {
+          builder.element('Bucket', nest: bucket);
+        }
+
+        if (encryptionConfiguration != null) {
+          builder.element(
+            'EncryptionConfiguration',
+            nest: (encryptionConfiguration!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (metrics != null) {
+          builder.element(
+            'Metrics',
+            nest: (metrics!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (replicationTime != null) {
+          builder.element(
+            'ReplicationTime',
+            nest:
+                (replicationTime!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (storageClass != null) {
+          builder.element('StorageClass', nest: storageClass);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -995,11 +1379,7 @@ class Destination {
 
 /// Contains the type of server-side encryption used.
 class Encryption {
-  Encryption(
-    this.encryptionType,
-    this.kMSContext,
-    this.kMSKeyId,
-  );
+  Encryption(this.encryptionType, this.kMSContext, this.kMSKeyId);
 
   Encryption.fromXml(XmlElement? xml) {
     encryptionType = getProp(xml, 'EncryptionType')?.text;
@@ -1009,11 +1389,22 @@ class Encryption {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('Encryption', nest: () {
-      builder.element('EncryptionType', nest: encryptionType);
-      builder.element('KMSContext', nest: kMSContext);
-      builder.element('KMSKeyId', nest: kMSKeyId);
-    });
+    builder.element(
+      'Encryption',
+      nest: () {
+        if (encryptionType != null) {
+          builder.element('EncryptionType', nest: encryptionType);
+        }
+
+        if (kMSContext != null) {
+          builder.element('KMSContext', nest: kMSContext);
+        }
+
+        if (kMSKeyId != null) {
+          builder.element('KMSKeyId', nest: kMSKeyId);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1029,9 +1420,7 @@ class Encryption {
 
 /// Specifies encryption-related information for an Amazon S3 bucket that is a destination for replicated objects.
 class EncryptionConfiguration {
-  EncryptionConfiguration(
-    this.replicaKmsKeyID,
-  );
+  EncryptionConfiguration(this.replicaKmsKeyID);
 
   EncryptionConfiguration.fromXml(XmlElement? xml) {
     replicaKmsKeyID = getProp(xml, 'ReplicaKmsKeyID')?.text;
@@ -1039,9 +1428,14 @@ class EncryptionConfiguration {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('EncryptionConfiguration', nest: () {
-      builder.element('ReplicaKmsKeyID', nest: replicaKmsKeyID);
-    });
+    builder.element(
+      'EncryptionConfiguration',
+      nest: () {
+        if (replicaKmsKeyID != null) {
+          builder.element('ReplicaKmsKeyID', nest: replicaKmsKeyID);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1064,14 +1458,9 @@ class EndEvent {
 
 /// Container for all error elements.
 class Error {
-  Error(
-    this.code,
-    this.key,
-    this.message,
-    this.versionId,
-  );
+  Error(this.code, this.key, this.message, this.versionId);
 
-  Error.fromXml(XmlElement xml) {
+  Error.fromXml(XmlElement? xml) {
     code = getProp(xml, 'Code')?.text;
     key = getProp(xml, 'Key')?.text;
     message = getProp(xml, 'Message')?.text;
@@ -1080,12 +1469,26 @@ class Error {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('Error', nest: () {
-      builder.element('Code', nest: code);
-      builder.element('Key', nest: key);
-      builder.element('Message', nest: message);
-      builder.element('VersionId', nest: versionId);
-    });
+    builder.element(
+      'Error',
+      nest: () {
+        if (code != null) {
+          builder.element('Code', nest: code);
+        }
+
+        if (key != null) {
+          builder.element('Key', nest: key);
+        }
+
+        if (message != null) {
+          builder.element('Message', nest: message);
+        }
+
+        if (versionId != null) {
+          builder.element('VersionId', nest: versionId);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1109,9 +1512,7 @@ class Error {
 
 /// The error information.
 class ErrorDocument {
-  ErrorDocument(
-    this.key,
-  );
+  ErrorDocument(this.key);
 
   ErrorDocument.fromXml(XmlElement? xml) {
     key = getProp(xml, 'Key')?.text;
@@ -1119,9 +1520,14 @@ class ErrorDocument {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('ErrorDocument', nest: () {
-      builder.element('Key', nest: key);
-    });
+    builder.element(
+      'ErrorDocument',
+      nest: () {
+        if (key != null) {
+          builder.element('Key', nest: key);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1131,9 +1537,7 @@ class ErrorDocument {
 
 /// Optional configuration to replicate existing source bucket objects. For more information, see Replicating Existing Objects in the Amazon S3 Developer Guide.
 class ExistingObjectReplication {
-  ExistingObjectReplication(
-    this.status,
-  );
+  ExistingObjectReplication(this.status);
 
   ExistingObjectReplication.fromXml(XmlElement? xml) {
     status = getProp(xml, 'Status')?.text;
@@ -1141,9 +1545,14 @@ class ExistingObjectReplication {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('ExistingObjectReplication', nest: () {
-      builder.element('Status', nest: status);
-    });
+    builder.element(
+      'ExistingObjectReplication',
+      nest: () {
+        if (status != null) {
+          builder.element('Status', nest: status);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1153,10 +1562,7 @@ class ExistingObjectReplication {
 
 /// Specifies the Amazon S3 object key name to filter on and whether to filter on the suffix or prefix of the key name.
 class FilterRule {
-  FilterRule(
-    this.name,
-    this.value,
-  );
+  FilterRule(this.name, this.value);
 
   FilterRule.fromXml(XmlElement? xml) {
     name = getProp(xml, 'Name')?.text;
@@ -1165,10 +1571,18 @@ class FilterRule {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('FilterRule', nest: () {
-      builder.element('Name', nest: name);
-      builder.element('Value', nest: value);
-    });
+    builder.element(
+      'FilterRule',
+      nest: () {
+        if (name != null) {
+          builder.element('Name', nest: name);
+        }
+
+        if (value != null) {
+          builder.element('Value', nest: value);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1181,9 +1595,7 @@ class FilterRule {
 
 /// Container for S3 Glacier job parameters.
 class GlacierJobParameters {
-  GlacierJobParameters(
-    this.tier,
-  );
+  GlacierJobParameters(this.tier);
 
   GlacierJobParameters.fromXml(XmlElement? xml) {
     tier = getProp(xml, 'Tier')?.text;
@@ -1191,9 +1603,14 @@ class GlacierJobParameters {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('GlacierJobParameters', nest: () {
-      builder.element('Tier', nest: tier);
-    });
+    builder.element(
+      'GlacierJobParameters',
+      nest: () {
+        if (tier != null) {
+          builder.element('Tier', nest: tier);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1203,10 +1620,7 @@ class GlacierJobParameters {
 
 /// Container for grant information.
 class Grant {
-  Grant(
-    this.grantee,
-    this.permission,
-  );
+  Grant(this.grantee, this.permission);
 
   Grant.fromXml(XmlElement? xml) {
     grantee = Grantee.fromXml(getProp(xml, 'Grantee'));
@@ -1215,10 +1629,21 @@ class Grant {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('Grant', nest: () {
-      builder.element('Grantee', nest: grantee!.toXml());
-      builder.element('Permission', nest: permission);
-    });
+    builder.element(
+      'Grant',
+      nest: () {
+        if (grantee != null) {
+          builder.element(
+            'Grantee',
+            nest: (grantee!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (permission != null) {
+          builder.element('Permission', nest: permission);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1231,13 +1656,7 @@ class Grant {
 
 /// Container for the person being granted permissions.
 class Grantee {
-  Grantee(
-    this.displayName,
-    this.emailAddress,
-    this.iD,
-    this.type,
-    this.uRI,
-  );
+  Grantee(this.displayName, this.emailAddress, this.iD, this.type, this.uRI);
 
   Grantee.fromXml(XmlElement? xml) {
     displayName = getProp(xml, 'DisplayName')?.text;
@@ -1249,13 +1668,30 @@ class Grantee {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('Grantee', nest: () {
-      builder.element('DisplayName', nest: displayName);
-      builder.element('EmailAddress', nest: emailAddress);
-      builder.element('ID', nest: iD);
-      builder.element('Type', nest: type);
-      builder.element('URI', nest: uRI);
-    });
+    builder.element(
+      'Grantee',
+      nest: () {
+        if (displayName != null) {
+          builder.element('DisplayName', nest: displayName);
+        }
+
+        if (emailAddress != null) {
+          builder.element('EmailAddress', nest: emailAddress);
+        }
+
+        if (iD != null) {
+          builder.element('ID', nest: iD);
+        }
+
+        if (type != null) {
+          builder.element('Type', nest: type);
+        }
+
+        if (uRI != null) {
+          builder.element('URI', nest: uRI);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1277,9 +1713,7 @@ class Grantee {
 
 /// Container for the Suffix element.
 class IndexDocument {
-  IndexDocument(
-    this.suffix,
-  );
+  IndexDocument(this.suffix);
 
   IndexDocument.fromXml(XmlElement? xml) {
     suffix = getProp(xml, 'Suffix')?.text;
@@ -1287,9 +1721,14 @@ class IndexDocument {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('IndexDocument', nest: () {
-      builder.element('Suffix', nest: suffix);
-    });
+    builder.element(
+      'IndexDocument',
+      nest: () {
+        if (suffix != null) {
+          builder.element('Suffix', nest: suffix);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1299,10 +1738,7 @@ class IndexDocument {
 
 /// Container element that identifies who initiated the multipart upload.
 class Initiator {
-  Initiator(
-    this.displayName,
-    this.iD,
-  );
+  Initiator(this.displayName, this.iD);
 
   Initiator.fromXml(XmlElement? xml) {
     displayName = getProp(xml, 'DisplayName')?.text;
@@ -1311,10 +1747,18 @@ class Initiator {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('Initiator', nest: () {
-      builder.element('DisplayName', nest: displayName);
-      builder.element('ID', nest: iD);
-    });
+    builder.element(
+      'Initiator',
+      nest: () {
+        if (displayName != null) {
+          builder.element('DisplayName', nest: displayName);
+        }
+
+        if (iD != null) {
+          builder.element('ID', nest: iD);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1327,12 +1771,7 @@ class Initiator {
 
 /// Describes the serialization format of the object.
 class InputSerialization {
-  InputSerialization(
-    this.compressionType,
-    this.cSV,
-    this.jSON,
-    this.parquet,
-  );
+  InputSerialization(this.compressionType, this.cSV, this.jSON, this.parquet);
 
   InputSerialization.fromXml(XmlElement? xml) {
     compressionType = getProp(xml, 'CompressionType')?.text;
@@ -1343,12 +1782,35 @@ class InputSerialization {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('InputSerialization', nest: () {
-      builder.element('CompressionType', nest: compressionType);
-      builder.element('CSV', nest: cSV!.toXml());
-      builder.element('JSON', nest: jSON!.toXml());
-      builder.element('Parquet', nest: parquet!.toXml());
-    });
+    builder.element(
+      'InputSerialization',
+      nest: () {
+        if (compressionType != null) {
+          builder.element('CompressionType', nest: compressionType);
+        }
+
+        if (cSV != null) {
+          builder.element(
+            'CSV',
+            nest: (cSV!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (jSON != null) {
+          builder.element(
+            'JSON',
+            nest: (jSON!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (parquet != null) {
+          builder.element(
+            'Parquet',
+            nest: (parquet!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1377,7 +1839,7 @@ class InventoryConfiguration {
     this.schedule,
   );
 
-  InventoryConfiguration.fromXml(XmlElement xml) {
+  InventoryConfiguration.fromXml(XmlElement? xml) {
     destination = InventoryDestination.fromXml(getProp(xml, 'Destination'));
     filter = InventoryFilter.fromXml(getProp(xml, 'Filter'));
     id = getProp(xml, 'Id')?.text;
@@ -1389,15 +1851,50 @@ class InventoryConfiguration {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('InventoryConfiguration', nest: () {
-      builder.element('Destination', nest: destination!.toXml());
-      builder.element('Filter', nest: filter!.toXml());
-      builder.element('Id', nest: id);
-      builder.element('IncludedObjectVersions', nest: includedObjectVersions);
-      builder.element('IsEnabled', nest: isEnabled! ? 'TRUE' : 'FALSE');
-      builder.element('OptionalFields', nest: optionalFields);
-      builder.element('Schedule', nest: schedule!.toXml());
-    });
+    builder.element(
+      'InventoryConfiguration',
+      nest: () {
+        if (destination != null) {
+          builder.element(
+            'Destination',
+            nest: (destination!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (filter != null) {
+          builder.element(
+            'Filter',
+            nest: (filter!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (id != null) {
+          builder.element('Id', nest: id);
+        }
+
+        if (includedObjectVersions != null) {
+          builder.element(
+            'IncludedObjectVersions',
+            nest: includedObjectVersions,
+          );
+        }
+
+        if (isEnabled != null) {
+          builder.element('IsEnabled', nest: isEnabled! ? 'TRUE' : 'FALSE');
+        }
+
+        if (optionalFields != null) {
+          builder.element('OptionalFields', nest: optionalFields);
+        }
+
+        if (schedule != null) {
+          builder.element(
+            'Schedule',
+            nest: (schedule!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1425,21 +1922,29 @@ class InventoryConfiguration {
 
 /// Specifies the inventory configuration for an Amazon S3 bucket.
 class InventoryDestination {
-  InventoryDestination(
-    this.s3BucketDestination,
-  );
+  InventoryDestination(this.s3BucketDestination);
 
   InventoryDestination.fromXml(XmlElement? xml) {
     s3BucketDestination = InventoryS3BucketDestination.fromXml(
-        getProp(xml, 'S3BucketDestination'));
+      getProp(xml, 'S3BucketDestination'),
+    );
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('InventoryDestination', nest: () {
-      builder.element('S3BucketDestination',
-          nest: s3BucketDestination!.toXml());
-    });
+    builder.element(
+      'InventoryDestination',
+      nest: () {
+        if (s3BucketDestination != null) {
+          builder.element(
+            'S3BucketDestination',
+            nest: (s3BucketDestination!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1449,10 +1954,7 @@ class InventoryDestination {
 
 /// Contains the type of server-side encryption used to encrypt the inventory results.
 class InventoryEncryption {
-  InventoryEncryption(
-    this.sSEKMS,
-    this.sSES3,
-  );
+  InventoryEncryption(this.sSEKMS, this.sSES3);
 
   InventoryEncryption.fromXml(XmlElement? xml) {
     sSEKMS = SSEKMS.fromXml(getProp(xml, 'SSEKMS'));
@@ -1461,10 +1963,24 @@ class InventoryEncryption {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('InventoryEncryption', nest: () {
-      builder.element('SSEKMS', nest: sSEKMS!.toXml());
-      builder.element('SSES3', nest: sSES3!.toXml());
-    });
+    builder.element(
+      'InventoryEncryption',
+      nest: () {
+        if (sSEKMS != null) {
+          builder.element(
+            'SSEKMS',
+            nest: (sSEKMS!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (sSES3 != null) {
+          builder.element(
+            'SSES3',
+            nest: (sSES3!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1477,9 +1993,7 @@ class InventoryEncryption {
 
 /// Specifies an inventory filter. The inventory only includes objects that meet the filter's criteria.
 class InventoryFilter {
-  InventoryFilter(
-    this.prefix,
-  );
+  InventoryFilter(this.prefix);
 
   InventoryFilter.fromXml(XmlElement? xml) {
     prefix = getProp(xml, 'Prefix')?.text;
@@ -1487,9 +2001,14 @@ class InventoryFilter {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('InventoryFilter', nest: () {
-      builder.element('Prefix', nest: prefix);
-    });
+    builder.element(
+      'InventoryFilter',
+      nest: () {
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1517,13 +2036,33 @@ class InventoryS3BucketDestination {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('InventoryS3BucketDestination', nest: () {
-      builder.element('AccountId', nest: accountId);
-      builder.element('Bucket', nest: bucket);
-      builder.element('Encryption', nest: encryption!.toXml());
-      builder.element('Format', nest: format);
-      builder.element('Prefix', nest: prefix);
-    });
+    builder.element(
+      'InventoryS3BucketDestination',
+      nest: () {
+        if (accountId != null) {
+          builder.element('AccountId', nest: accountId);
+        }
+
+        if (bucket != null) {
+          builder.element('Bucket', nest: bucket);
+        }
+
+        if (encryption != null) {
+          builder.element(
+            'Encryption',
+            nest: (encryption!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (format != null) {
+          builder.element('Format', nest: format);
+        }
+
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1545,9 +2084,7 @@ class InventoryS3BucketDestination {
 
 /// Specifies the schedule for generating inventory results.
 class InventorySchedule {
-  InventorySchedule(
-    this.frequency,
-  );
+  InventorySchedule(this.frequency);
 
   InventorySchedule.fromXml(XmlElement? xml) {
     frequency = getProp(xml, 'Frequency')?.text;
@@ -1555,9 +2092,14 @@ class InventorySchedule {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('InventorySchedule', nest: () {
-      builder.element('Frequency', nest: frequency);
-    });
+    builder.element(
+      'InventorySchedule',
+      nest: () {
+        if (frequency != null) {
+          builder.element('Frequency', nest: frequency);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1567,9 +2109,7 @@ class InventorySchedule {
 
 /// Specifies JSON as object's input serialization format.
 class JSONInput {
-  JSONInput(
-    this.type,
-  );
+  JSONInput(this.type);
 
   JSONInput.fromXml(XmlElement? xml) {
     type = getProp(xml, 'Type')?.text;
@@ -1577,9 +2117,14 @@ class JSONInput {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('JSONInput', nest: () {
-      builder.element('Type', nest: type);
-    });
+    builder.element(
+      'JSONInput',
+      nest: () {
+        if (type != null) {
+          builder.element('Type', nest: type);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1589,9 +2134,7 @@ class JSONInput {
 
 /// Specifies JSON as request's output serialization format.
 class JSONOutput {
-  JSONOutput(
-    this.recordDelimiter,
-  );
+  JSONOutput(this.recordDelimiter);
 
   JSONOutput.fromXml(XmlElement? xml) {
     recordDelimiter = getProp(xml, 'RecordDelimiter')?.text;
@@ -1599,9 +2142,14 @@ class JSONOutput {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('JSONOutput', nest: () {
-      builder.element('RecordDelimiter', nest: recordDelimiter);
-    });
+    builder.element(
+      'JSONOutput',
+      nest: () {
+        if (recordDelimiter != null) {
+          builder.element('RecordDelimiter', nest: recordDelimiter);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1619,25 +2167,45 @@ class LambdaFunctionConfiguration {
   );
 
   LambdaFunctionConfiguration.fromXml(XmlElement? xml) {
-    events = getProp(xml, 'Events')?.text;
+    events = eventsFromXml(xml);
     filter = NotificationConfigurationFilter.fromXml(getProp(xml, 'Filter'));
     id = getProp(xml, 'Id')?.text;
-    lambdaFunctionArn = getProp(xml, 'LambdaFunctionArn')?.text;
+    lambdaFunctionArn =
+        getProp(xml, 'CloudFunction')?.text ??
+        getProp(xml, 'LambdaFunctionArn')?.text;
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('LambdaFunctionConfiguration', nest: () {
-      builder.element('Events', nest: events);
-      builder.element('Filter', nest: filter!.toXml());
-      builder.element('Id', nest: id);
-      builder.element('LambdaFunctionArn', nest: lambdaFunctionArn);
-    });
+    builder.element(
+      'LambdaFunctionConfiguration',
+      nest: () {
+        if (events != null) {
+          for (final event in events!) {
+            builder.element('Event', nest: event);
+          }
+        }
+        if (filter != null) {
+          builder.element(
+            'Filter',
+            nest: (filter!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (id != null) {
+          builder.element('Id', nest: id);
+        }
+
+        if (lambdaFunctionArn != null) {
+          builder.element('CloudFunction', nest: lambdaFunctionArn);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
   /// The Amazon S3 bucket event for which to invoke the AWS Lambda function. For more information, see Supported Event Types in the Amazon Simple Storage Service Developer Guide.
-  String? events;
+  List<String>? events;
 
   /// Specifies object key name filtering rules. For information about key name filtering, see Configuring Event Notifications in the Amazon Simple Storage Service Developer Guide.
   NotificationConfigurationFilter? filter;
@@ -1651,19 +2219,25 @@ class LambdaFunctionConfiguration {
 
 /// Container for lifecycle rules. You can add as many as 1000 rules.
 class LifecycleConfiguration {
-  LifecycleConfiguration(
-    this.rules,
-  );
+  LifecycleConfiguration(this.rules);
 
-  LifecycleConfiguration.fromXml(XmlElement xml) {
+  LifecycleConfiguration.fromXml(XmlElement? xml) {
     rules = Rule.fromXml(getProp(xml, 'Rules'));
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('LifecycleConfiguration', nest: () {
-      builder.element('Rules', nest: rules!.toXml());
-    });
+    builder.element(
+      'LifecycleConfiguration',
+      nest: () {
+        if (rules != null) {
+          builder.element(
+            'Rules',
+            nest: (rules!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1673,27 +2247,36 @@ class LifecycleConfiguration {
 
 /// Container for the expiration for the lifecycle of the object.
 class LifecycleExpiration {
-  LifecycleExpiration(
-    this.date,
-    this.days,
-    this.expiredObjectDeleteMarker,
-  );
+  LifecycleExpiration(this.date, this.days, this.expiredObjectDeleteMarker);
 
   LifecycleExpiration.fromXml(XmlElement? xml) {
-    date = DateTime.parse(getProp(xml, 'Date')!.text);
-    days = int.tryParse(getProp(xml, 'Days')!.text);
+    date = DateTime.tryParse(getProp(xml, 'Date')?.text ?? '');
+    days = int.tryParse(getProp(xml, 'Days')?.text ?? '');
     expiredObjectDeleteMarker =
         getProp(xml, 'ExpiredObjectDeleteMarker')?.text.toUpperCase() == 'TRUE';
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('LifecycleExpiration', nest: () {
-      builder.element('Date', nest: date!.toIso8601String());
-      builder.element('Days', nest: days.toString());
-      builder.element('ExpiredObjectDeleteMarker',
-          nest: expiredObjectDeleteMarker! ? 'TRUE' : 'FALSE');
-    });
+    builder.element(
+      'LifecycleExpiration',
+      nest: () {
+        if (date != null) {
+          builder.element('Date', nest: date!.toIso8601String());
+        }
+
+        if (days != null) {
+          builder.element('Days', nest: days.toString());
+        }
+
+        if (expiredObjectDeleteMarker != null) {
+          builder.element(
+            'ExpiredObjectDeleteMarker',
+            nest: expiredObjectDeleteMarker! ? 'TRUE' : 'FALSE',
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1723,14 +2306,17 @@ class LifecycleRule {
 
   LifecycleRule.fromXml(XmlElement? xml) {
     abortIncompleteMultipartUpload = AbortIncompleteMultipartUpload.fromXml(
-        getProp(xml, 'AbortIncompleteMultipartUpload'));
+      getProp(xml, 'AbortIncompleteMultipartUpload'),
+    );
     expiration = LifecycleExpiration.fromXml(getProp(xml, 'Expiration'));
     filter = LifecycleRuleFilter.fromXml(getProp(xml, 'Filter'));
     iD = getProp(xml, 'ID')?.text;
     noncurrentVersionExpiration = NoncurrentVersionExpiration.fromXml(
-        getProp(xml, 'NoncurrentVersionExpiration'));
+      getProp(xml, 'NoncurrentVersionExpiration'),
+    );
     noncurrentVersionTransitions = NoncurrentVersionTransition.fromXml(
-        getProp(xml, 'NoncurrentVersionTransitions'));
+      getProp(xml, 'NoncurrentVersionTransitions'),
+    );
     prefix = getProp(xml, 'Prefix')?.text;
     status = getProp(xml, 'Status')?.text;
     transitions = Transition.fromXml(getProp(xml, 'Transitions'));
@@ -1738,20 +2324,70 @@ class LifecycleRule {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('LifecycleRule', nest: () {
-      builder.element('AbortIncompleteMultipartUpload',
-          nest: abortIncompleteMultipartUpload!.toXml());
-      builder.element('Expiration', nest: expiration!.toXml());
-      builder.element('Filter', nest: filter!.toXml());
-      builder.element('ID', nest: iD);
-      builder.element('NoncurrentVersionExpiration',
-          nest: noncurrentVersionExpiration!.toXml());
-      builder.element('NoncurrentVersionTransitions',
-          nest: noncurrentVersionTransitions!.toXml());
-      builder.element('Prefix', nest: prefix);
-      builder.element('Status', nest: status);
-      builder.element('Transitions', nest: transitions!.toXml());
-    });
+    builder.element(
+      'LifecycleRule',
+      nest: () {
+        if (abortIncompleteMultipartUpload != null) {
+          builder.element(
+            'AbortIncompleteMultipartUpload',
+            nest: (abortIncompleteMultipartUpload!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (expiration != null) {
+          builder.element(
+            'Expiration',
+            nest: (expiration!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (filter != null) {
+          builder.element(
+            'Filter',
+            nest: (filter!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (iD != null) {
+          builder.element('ID', nest: iD);
+        }
+
+        if (noncurrentVersionExpiration != null) {
+          builder.element(
+            'NoncurrentVersionExpiration',
+            nest: (noncurrentVersionExpiration!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (noncurrentVersionTransitions != null) {
+          builder.element(
+            'NoncurrentVersionTransitions',
+            nest: (noncurrentVersionTransitions!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (status != null) {
+          builder.element('Status', nest: status);
+        }
+
+        if (transitions != null) {
+          builder.element(
+            'Transitions',
+            nest: (transitions!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1785,10 +2421,7 @@ class LifecycleRule {
 
 /// This is used in a Lifecycle Rule Filter to apply a logical AND to two or more predicates. The Lifecycle Rule will apply to any object matching all of the predicates configured inside the And operator.
 class LifecycleRuleAndOperator {
-  LifecycleRuleAndOperator(
-    this.prefix,
-    this.tags,
-  );
+  LifecycleRuleAndOperator(this.prefix, this.tags);
 
   LifecycleRuleAndOperator.fromXml(XmlElement? xml) {
     prefix = getProp(xml, 'Prefix')?.text;
@@ -1797,10 +2430,21 @@ class LifecycleRuleAndOperator {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('LifecycleRuleAndOperator', nest: () {
-      builder.element('Prefix', nest: prefix);
-      builder.element('Tags', nest: tags!.toXml());
-    });
+    builder.element(
+      'LifecycleRuleAndOperator',
+      nest: () {
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (tags != null) {
+          builder.element(
+            'Tags',
+            nest: (tags!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1813,11 +2457,7 @@ class LifecycleRuleAndOperator {
 
 /// The Filter is used to identify objects that a Lifecycle Rule applies to. A Filter must have exactly one of Prefix, Tag, or And specified.
 class LifecycleRuleFilter {
-  LifecycleRuleFilter(
-    this.and,
-    this.prefix,
-    this.tag,
-  );
+  LifecycleRuleFilter(this.and, this.prefix, this.tag);
 
   LifecycleRuleFilter.fromXml(XmlElement? xml) {
     and = LifecycleRuleAndOperator.fromXml(getProp(xml, 'And'));
@@ -1827,11 +2467,28 @@ class LifecycleRuleFilter {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('LifecycleRuleFilter', nest: () {
-      builder.element('And', nest: and!.toXml());
-      builder.element('Prefix', nest: prefix);
-      builder.element('Tag', nest: tag!.toXml());
-    });
+    builder.element(
+      'LifecycleRuleFilter',
+      nest: () {
+        if (and != null) {
+          builder.element(
+            'And',
+            nest: (and!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (tag != null) {
+          builder.element(
+            'Tag',
+            nest: (tag!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1847,11 +2504,7 @@ class LifecycleRuleFilter {
 
 /// Describes where logs are stored and the prefix that Amazon S3 assigns to all log object keys for a bucket. For more information, see PUT Bucket logging in the Amazon Simple Storage Service API Reference.
 class LoggingEnabled {
-  LoggingEnabled(
-    this.targetBucket,
-    this.targetGrants,
-    this.targetPrefix,
-  );
+  LoggingEnabled(this.targetBucket, this.targetGrants, this.targetPrefix);
 
   LoggingEnabled.fromXml(XmlElement? xml) {
     targetBucket = getProp(xml, 'TargetBucket')?.text;
@@ -1861,11 +2514,25 @@ class LoggingEnabled {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('LoggingEnabled', nest: () {
-      builder.element('TargetBucket', nest: targetBucket);
-      builder.element('TargetGrants', nest: targetGrants!.toXml());
-      builder.element('TargetPrefix', nest: targetPrefix);
-    });
+    builder.element(
+      'LoggingEnabled',
+      nest: () {
+        if (targetBucket != null) {
+          builder.element('TargetBucket', nest: targetBucket);
+        }
+
+        if (targetGrants != null) {
+          builder.element(
+            'TargetGrants',
+            nest: (targetGrants!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (targetPrefix != null) {
+          builder.element('TargetPrefix', nest: targetPrefix);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1881,10 +2548,7 @@ class LoggingEnabled {
 
 /// A metadata key-value pair to store with an object.
 class MetadataEntry {
-  MetadataEntry(
-    this.name,
-    this.value,
-  );
+  MetadataEntry(this.name, this.value);
 
   MetadataEntry.fromXml(XmlElement? xml) {
     name = getProp(xml, 'Name')?.text;
@@ -1893,10 +2557,18 @@ class MetadataEntry {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('MetadataEntry', nest: () {
-      builder.element('Name', nest: name);
-      builder.element('Value', nest: value);
-    });
+    builder.element(
+      'MetadataEntry',
+      nest: () {
+        if (name != null) {
+          builder.element('Name', nest: name);
+        }
+
+        if (value != null) {
+          builder.element('Value', nest: value);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1909,23 +2581,32 @@ class MetadataEntry {
 
 ///  A container specifying replication metrics-related settings enabling metrics and Amazon S3 events for S3 Replication Time Control (S3 RTC). Must be specified together with a ReplicationTime block.
 class Metrics {
-  Metrics(
-    this.eventThreshold,
-    this.status,
-  );
+  Metrics(this.eventThreshold, this.status);
 
   Metrics.fromXml(XmlElement? xml) {
-    eventThreshold =
-        ReplicationTimeValue.fromXml(getProp(xml, 'EventThreshold'));
+    eventThreshold = ReplicationTimeValue.fromXml(
+      getProp(xml, 'EventThreshold'),
+    );
     status = getProp(xml, 'Status')?.text;
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('Metrics', nest: () {
-      builder.element('EventThreshold', nest: eventThreshold!.toXml());
-      builder.element('Status', nest: status);
-    });
+    builder.element(
+      'Metrics',
+      nest: () {
+        if (eventThreshold != null) {
+          builder.element(
+            'EventThreshold',
+            nest: (eventThreshold!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (status != null) {
+          builder.element('Status', nest: status);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1938,10 +2619,7 @@ class Metrics {
 
 /// A conjunction (logical AND) of predicates, which is used in evaluating a metrics filter. The operator must have at least two predicates, and an object must match all of the predicates in order for the filter to apply.
 class MetricsAndOperator {
-  MetricsAndOperator(
-    this.prefix,
-    this.tags,
-  );
+  MetricsAndOperator(this.prefix, this.tags);
 
   MetricsAndOperator.fromXml(XmlElement? xml) {
     prefix = getProp(xml, 'Prefix')?.text;
@@ -1950,10 +2628,21 @@ class MetricsAndOperator {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('MetricsAndOperator', nest: () {
-      builder.element('Prefix', nest: prefix);
-      builder.element('Tags', nest: tags!.toXml());
-    });
+    builder.element(
+      'MetricsAndOperator',
+      nest: () {
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (tags != null) {
+          builder.element(
+            'Tags',
+            nest: (tags!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1966,22 +2655,30 @@ class MetricsAndOperator {
 
 /// Specifies a metrics configuration for the CloudWatch request metrics (specified by the metrics configuration ID) from an Amazon S3 bucket. If you're updating an existing metrics configuration, note that this is a full replacement of the existing metrics configuration. If you don't include the elements you want to keep, they are erased. For more information, see PUT Bucket metrics in the Amazon Simple Storage Service API Reference.
 class MetricsConfiguration {
-  MetricsConfiguration(
-    this.filter,
-    this.id,
-  );
+  MetricsConfiguration(this.filter, this.id);
 
-  MetricsConfiguration.fromXml(XmlElement xml) {
+  MetricsConfiguration.fromXml(XmlElement? xml) {
     filter = MetricsFilter.fromXml(getProp(xml, 'Filter'));
     id = getProp(xml, 'Id')?.text;
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('MetricsConfiguration', nest: () {
-      builder.element('Filter', nest: filter!.toXml());
-      builder.element('Id', nest: id);
-    });
+    builder.element(
+      'MetricsConfiguration',
+      nest: () {
+        if (filter != null) {
+          builder.element(
+            'Filter',
+            nest: (filter!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (id != null) {
+          builder.element('Id', nest: id);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -1994,11 +2691,7 @@ class MetricsConfiguration {
 
 /// Specifies a metrics configuration filter. The metrics configuration only includes objects that meet the filter's criteria. A filter must be a prefix, a tag, or a conjunction (MetricsAndOperator).
 class MetricsFilter {
-  MetricsFilter(
-    this.and,
-    this.prefix,
-    this.tag,
-  );
+  MetricsFilter(this.and, this.prefix, this.tag);
 
   MetricsFilter.fromXml(XmlElement? xml) {
     and = MetricsAndOperator.fromXml(getProp(xml, 'And'));
@@ -2008,11 +2701,28 @@ class MetricsFilter {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('MetricsFilter', nest: () {
-      builder.element('And', nest: and!.toXml());
-      builder.element('Prefix', nest: prefix);
-      builder.element('Tag', nest: tag!.toXml());
-    });
+    builder.element(
+      'MetricsFilter',
+      nest: () {
+        if (and != null) {
+          builder.element(
+            'And',
+            nest: (and!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (tag != null) {
+          builder.element(
+            'Tag',
+            nest: (tag!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2037,8 +2747,8 @@ class MultipartUpload {
     this.uploadId,
   );
 
-  MultipartUpload.fromXml(XmlElement xml) {
-    initiated = DateTime.parse(getProp(xml, 'Initiated')!.text);
+  MultipartUpload.fromXml(XmlElement? xml) {
+    initiated = DateTime.tryParse(getProp(xml, 'Initiated')?.text ?? '');
     initiator = Initiator.fromXml(getProp(xml, 'Initiator'));
     key = getProp(xml, 'Key')?.text;
     owner = Owner.fromXml(getProp(xml, 'Owner'));
@@ -2048,14 +2758,40 @@ class MultipartUpload {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('MultipartUpload', nest: () {
-      builder.element('Initiated', nest: initiated!.toIso8601String());
-      builder.element('Initiator', nest: initiator!.toXml());
-      builder.element('Key', nest: key);
-      builder.element('Owner', nest: owner!.toXml());
-      builder.element('StorageClass', nest: storageClass);
-      builder.element('UploadId', nest: uploadId);
-    });
+    builder.element(
+      'MultipartUpload',
+      nest: () {
+        if (initiated != null) {
+          builder.element('Initiated', nest: initiated!.toIso8601String());
+        }
+
+        if (initiator != null) {
+          builder.element(
+            'Initiator',
+            nest: (initiator!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (key != null) {
+          builder.element('Key', nest: key);
+        }
+
+        if (owner != null) {
+          builder.element(
+            'Owner',
+            nest: (owner!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (storageClass != null) {
+          builder.element('StorageClass', nest: storageClass);
+        }
+
+        if (uploadId != null) {
+          builder.element('UploadId', nest: uploadId);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2080,19 +2816,22 @@ class MultipartUpload {
 
 /// Specifies when noncurrent object versions expire. Upon expiration, Amazon S3 permanently deletes the noncurrent object versions. You set this lifecycle configuration action on a bucket that has versioning enabled (or suspended) to request that Amazon S3 delete noncurrent object versions at a specific period in the object's lifetime.
 class NoncurrentVersionExpiration {
-  NoncurrentVersionExpiration(
-    this.noncurrentDays,
-  );
+  NoncurrentVersionExpiration(this.noncurrentDays);
 
   NoncurrentVersionExpiration.fromXml(XmlElement? xml) {
-    noncurrentDays = int.tryParse(getProp(xml, 'NoncurrentDays')!.text);
+    noncurrentDays = int.tryParse(getProp(xml, 'NoncurrentDays')?.text ?? '');
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('NoncurrentVersionExpiration', nest: () {
-      builder.element('NoncurrentDays', nest: noncurrentDays.toString());
-    });
+    builder.element(
+      'NoncurrentVersionExpiration',
+      nest: () {
+        if (noncurrentDays != null) {
+          builder.element('NoncurrentDays', nest: noncurrentDays.toString());
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2102,22 +2841,27 @@ class NoncurrentVersionExpiration {
 
 /// Container for the transition rule that describes when noncurrent objects transition to the STANDARD_IA, ONEZONE_IA, INTELLIGENT_TIERING, GLACIER, or DEEP_ARCHIVE storage class. If your bucket is versioning-enabled (or versioning is suspended), you can set this action to request that Amazon S3 transition noncurrent object versions to the STANDARD_IA, ONEZONE_IA, INTELLIGENT_TIERING, GLACIER, or DEEP_ARCHIVE storage class at a specific period in the object's lifetime.
 class NoncurrentVersionTransition {
-  NoncurrentVersionTransition(
-    this.noncurrentDays,
-    this.storageClass,
-  );
+  NoncurrentVersionTransition(this.noncurrentDays, this.storageClass);
 
   NoncurrentVersionTransition.fromXml(XmlElement? xml) {
-    noncurrentDays = int.tryParse(getProp(xml, 'NoncurrentDays')!.text);
+    noncurrentDays = int.tryParse(getProp(xml, 'NoncurrentDays')?.text ?? '');
     storageClass = getProp(xml, 'StorageClass')?.text;
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('NoncurrentVersionTransition', nest: () {
-      builder.element('NoncurrentDays', nest: noncurrentDays.toString());
-      builder.element('StorageClass', nest: storageClass);
-    });
+    builder.element(
+      'NoncurrentVersionTransition',
+      nest: () {
+        if (noncurrentDays != null) {
+          builder.element('NoncurrentDays', nest: noncurrentDays.toString());
+        }
+
+        if (storageClass != null) {
+          builder.element('StorageClass', nest: storageClass);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2136,42 +2880,71 @@ class NotificationConfiguration {
     this.topicConfigurations,
   );
 
-  NotificationConfiguration.fromXml(XmlElement xml) {
-    lambdaFunctionConfigurations = LambdaFunctionConfiguration.fromXml(
-        getProp(xml, 'LambdaFunctionConfigurations'));
-    queueConfigurations =
-        QueueConfiguration.fromXml(getProp(xml, 'QueueConfigurations'));
-    topicConfigurations =
-        TopicConfiguration.fromXml(getProp(xml, 'TopicConfigurations'));
+  NotificationConfiguration.fromXml(XmlElement? xml) {
+    lambdaFunctionConfigurations =
+        configurationsFromXml<LambdaFunctionConfiguration>(
+          xml,
+          'CloudFunctionConfiguration',
+          LambdaFunctionConfiguration.fromXml,
+          wrapperName: 'LambdaFunctionConfigurations',
+          wrapperItemName: 'LambdaFunctionConfiguration',
+        );
+    queueConfigurations = configurationsFromXml<QueueConfiguration>(
+      xml,
+      'QueueConfiguration',
+      QueueConfiguration.fromXml,
+      wrapperName: 'QueueConfigurations',
+    );
+    topicConfigurations = configurationsFromXml<TopicConfiguration>(
+      xml,
+      'TopicConfiguration',
+      TopicConfiguration.fromXml,
+      wrapperName: 'TopicConfigurations',
+    );
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('NotificationConfiguration', nest: () {
-      if (lambdaFunctionConfigurations != null) {
-        builder.element('LambdaFunctionConfigurations',
-            nest: lambdaFunctionConfigurations!.toXml());
-      }
-      if (queueConfigurations != null) {
-        builder.element('QueueConfigurations',
-            nest: queueConfigurations!.toXml());
-      }
-      if (topicConfigurations != null) {
-        builder.element('TopicConfigurations',
-            nest: topicConfigurations!.toXml());
-      }
-    });
+    builder.element(
+      'NotificationConfiguration',
+      nest: () {
+        if (lambdaFunctionConfigurations != null) {
+          for (final configuration in lambdaFunctionConfigurations!) {
+            builder.element(
+              'CloudFunctionConfiguration',
+              nest: (configuration.toXml() as XmlDocument).rootElement.children,
+            );
+          }
+        }
+        if (queueConfigurations != null) {
+          for (final configuration in queueConfigurations!) {
+            builder.element(
+              'QueueConfiguration',
+              nest: (configuration.toXml() as XmlDocument).rootElement.children,
+            );
+          }
+        }
+        if (topicConfigurations != null) {
+          for (final configuration in topicConfigurations!) {
+            builder.element(
+              'TopicConfiguration',
+              nest: (configuration.toXml() as XmlDocument).rootElement.children,
+            );
+          }
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
   /// Describes the AWS Lambda functions to invoke and the events for which to invoke them.
-  LambdaFunctionConfiguration? lambdaFunctionConfigurations;
+  List<LambdaFunctionConfiguration>? lambdaFunctionConfigurations;
 
   /// The Amazon Simple Queue Service queues to publish messages to and the events for which to publish messages.
-  QueueConfiguration? queueConfigurations;
+  List<QueueConfiguration>? queueConfigurations;
 
   /// The topic to which notifications are sent and the events for which notifications are generated.
-  TopicConfiguration? topicConfigurations;
+  List<TopicConfiguration>? topicConfigurations;
 }
 
 /// Container for specifying the AWS Lambda notification configuration.
@@ -2182,23 +2955,51 @@ class NotificationConfigurationDeprecated {
     this.topicConfiguration,
   );
 
-  NotificationConfigurationDeprecated.fromXml(XmlElement xml) {
+  NotificationConfigurationDeprecated.fromXml(XmlElement? xml) {
     cloudFunctionConfiguration = CloudFunctionConfiguration.fromXml(
-        getProp(xml, 'CloudFunctionConfiguration'));
+      getProp(xml, 'CloudFunctionConfiguration'),
+    );
     queueConfiguration = QueueConfigurationDeprecated.fromXml(
-        getProp(xml, 'QueueConfiguration'));
+      getProp(xml, 'QueueConfiguration'),
+    );
     topicConfiguration = TopicConfigurationDeprecated.fromXml(
-        getProp(xml, 'TopicConfiguration'));
+      getProp(xml, 'TopicConfiguration'),
+    );
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('NotificationConfigurationDeprecated', nest: () {
-      builder.element('CloudFunctionConfiguration',
-          nest: cloudFunctionConfiguration!.toXml());
-      builder.element('QueueConfiguration', nest: queueConfiguration!.toXml());
-      builder.element('TopicConfiguration', nest: topicConfiguration!.toXml());
-    });
+    builder.element(
+      'NotificationConfigurationDeprecated',
+      nest: () {
+        if (cloudFunctionConfiguration != null) {
+          builder.element(
+            'CloudFunctionConfiguration',
+            nest: (cloudFunctionConfiguration!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (queueConfiguration != null) {
+          builder.element(
+            'QueueConfiguration',
+            nest: (queueConfiguration!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (topicConfiguration != null) {
+          builder.element(
+            'TopicConfiguration',
+            nest: (topicConfiguration!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2214,9 +3015,7 @@ class NotificationConfigurationDeprecated {
 
 /// Specifies object key name filtering rules. For information about key name filtering, see Configuring Event Notifications in the Amazon Simple Storage Service Developer Guide.
 class NotificationConfigurationFilter {
-  NotificationConfigurationFilter(
-    this.key,
-  );
+  NotificationConfigurationFilter(this.key);
 
   NotificationConfigurationFilter.fromXml(XmlElement? xml) {
     key = S3KeyFilter.fromXml(getProp(xml, 'Key'));
@@ -2224,9 +3023,17 @@ class NotificationConfigurationFilter {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('NotificationConfigurationFilter', nest: () {
-      builder.element('Key', nest: key!.toXml());
-    });
+    builder.element(
+      'NotificationConfigurationFilter',
+      nest: () {
+        if (key != null) {
+          builder.element(
+            'Key',
+            nest: (key!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2245,25 +3052,51 @@ class Object {
     this.storageClass,
   );
 
-  Object.fromXml(XmlElement xml) {
+  Object.fromXml(XmlElement? xml) {
     eTag = getProp(xml, 'ETag')?.text;
     key = getProp(xml, 'Key')?.text;
-    lastModified = DateTime.parse(getProp(xml, 'LastModified')!.text);
+    lastModified = DateTime.tryParse(getProp(xml, 'LastModified')?.text ?? '');
     owner = Owner.fromXml(getProp(xml, 'Owner'));
-    size = int.tryParse(getProp(xml, 'Size')!.text);
+    size = int.tryParse(getProp(xml, 'Size')?.text ?? '');
     storageClass = getProp(xml, 'StorageClass')?.text;
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('Object', nest: () {
-      builder.element('ETag', nest: eTag);
-      builder.element('Key', nest: key);
-      builder.element('LastModified', nest: lastModified!.toIso8601String());
-      builder.element('Owner', nest: owner!.toXml());
-      builder.element('Size', nest: size.toString());
-      builder.element('StorageClass', nest: storageClass);
-    });
+    builder.element(
+      'Object',
+      nest: () {
+        if (eTag != null) {
+          builder.element('ETag', nest: eTag);
+        }
+
+        if (key != null) {
+          builder.element('Key', nest: key);
+        }
+
+        if (lastModified != null) {
+          builder.element(
+            'LastModified',
+            nest: lastModified!.toIso8601String(),
+          );
+        }
+
+        if (owner != null) {
+          builder.element(
+            'Owner',
+            nest: (owner!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (size != null) {
+          builder.element('Size', nest: size.toString());
+        }
+
+        if (storageClass != null) {
+          builder.element('StorageClass', nest: storageClass);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2293,24 +3126,24 @@ class Object {
 
 /// Object Identifier is unique value to identify objects.
 class ObjectIdentifier {
-  ObjectIdentifier(
-    this.key,
-    this.versionId,
-  );
+  ObjectIdentifier(this.key, this.versionId);
 
-  ObjectIdentifier.fromXml(XmlElement xml) {
+  ObjectIdentifier.fromXml(XmlElement? xml) {
     key = getProp(xml, 'Key')?.text;
     versionId = getProp(xml, 'VersionId')?.text;
   }
 
   XmlElement toXml() {
     final builder = XmlBuilder();
-    builder.element('Object', nest: () {
-      builder.element('Key', nest: key);
-      if (versionId != null) {
-        builder.element('VersionId', nest: versionId);
-      }
-    });
+    builder.element(
+      'Object',
+      nest: () {
+        builder.element('Key', nest: key);
+        if (versionId != null) {
+          builder.element('VersionId', nest: versionId);
+        }
+      },
+    );
     return (builder.buildDocument()).rootElement;
   }
 
@@ -2323,22 +3156,30 @@ class ObjectIdentifier {
 
 /// The container element for Object Lock configuration parameters.
 class ObjectLockConfiguration {
-  ObjectLockConfiguration(
-    this.objectLockEnabled,
-    this.rule,
-  );
+  ObjectLockConfiguration(this.objectLockEnabled, this.rule);
 
-  ObjectLockConfiguration.fromXml(XmlElement xml) {
+  ObjectLockConfiguration.fromXml(XmlElement? xml) {
     objectLockEnabled = getProp(xml, 'ObjectLockEnabled')?.text;
     rule = ObjectLockRule.fromXml(getProp(xml, 'Rule'));
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('ObjectLockConfiguration', nest: () {
-      builder.element('ObjectLockEnabled', nest: objectLockEnabled);
-      builder.element('Rule', nest: rule!.toXml());
-    });
+    builder.element(
+      'ObjectLockConfiguration',
+      nest: () {
+        if (objectLockEnabled != null) {
+          builder.element('ObjectLockEnabled', nest: objectLockEnabled);
+        }
+
+        if (rule != null) {
+          builder.element(
+            'Rule',
+            nest: (rule!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2351,19 +3192,22 @@ class ObjectLockConfiguration {
 
 /// A Legal Hold configuration for an object.
 class ObjectLockLegalHold {
-  ObjectLockLegalHold(
-    this.status,
-  );
+  ObjectLockLegalHold(this.status);
 
-  ObjectLockLegalHold.fromXml(XmlElement xml) {
+  ObjectLockLegalHold.fromXml(XmlElement? xml) {
     status = getProp(xml, 'Status')?.text;
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('ObjectLockLegalHold', nest: () {
-      builder.element('Status', nest: status);
-    });
+    builder.element(
+      'ObjectLockLegalHold',
+      nest: () {
+        if (status != null) {
+          builder.element('Status', nest: status);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2373,23 +3217,32 @@ class ObjectLockLegalHold {
 
 /// A Retention configuration for an object.
 class ObjectLockRetention {
-  ObjectLockRetention(
-    this.mode,
-    this.retainUntilDate,
-  );
+  ObjectLockRetention(this.mode, this.retainUntilDate);
 
-  ObjectLockRetention.fromXml(XmlElement xml) {
+  ObjectLockRetention.fromXml(XmlElement? xml) {
     mode = getProp(xml, 'Mode')?.text;
-    retainUntilDate = DateTime.parse(getProp(xml, 'RetainUntilDate')!.text);
+    retainUntilDate = DateTime.tryParse(
+      getProp(xml, 'RetainUntilDate')?.text ?? '',
+    );
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('ObjectLockRetention', nest: () {
-      builder.element('Mode', nest: mode);
-      builder.element('RetainUntilDate',
-          nest: retainUntilDate!.toIso8601String());
-    });
+    builder.element(
+      'ObjectLockRetention',
+      nest: () {
+        if (mode != null) {
+          builder.element('Mode', nest: mode);
+        }
+
+        if (retainUntilDate != null) {
+          builder.element(
+            'RetainUntilDate',
+            nest: retainUntilDate!.toIso8601String(),
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2402,20 +3255,28 @@ class ObjectLockRetention {
 
 /// The container element for an Object Lock rule.
 class ObjectLockRule {
-  ObjectLockRule(
-    this.defaultRetention,
-  );
+  ObjectLockRule(this.defaultRetention);
 
   ObjectLockRule.fromXml(XmlElement? xml) {
-    defaultRetention =
-        DefaultRetention.fromXml(getProp(xml, 'DefaultRetention'));
+    defaultRetention = DefaultRetention.fromXml(
+      getProp(xml, 'DefaultRetention'),
+    );
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('ObjectLockRule', nest: () {
-      builder.element('DefaultRetention', nest: defaultRetention!.toXml());
-    });
+    builder.element(
+      'ObjectLockRule',
+      nest: () {
+        if (defaultRetention != null) {
+          builder.element(
+            'DefaultRetention',
+            nest:
+                (defaultRetention!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2436,29 +3297,61 @@ class ObjectVersion {
     this.versionId,
   );
 
-  ObjectVersion.fromXml(XmlElement xml) {
+  ObjectVersion.fromXml(XmlElement? xml) {
     eTag = getProp(xml, 'ETag')?.text;
     isLatest = getProp(xml, 'IsLatest')?.text.toUpperCase() == 'TRUE';
     key = getProp(xml, 'Key')?.text;
-    lastModified = DateTime.parse(getProp(xml, 'LastModified')!.text);
+    lastModified = DateTime.tryParse(getProp(xml, 'LastModified')?.text ?? '');
     owner = Owner.fromXml(getProp(xml, 'Owner'));
-    size = int.tryParse(getProp(xml, 'Size')!.text);
+    size = int.tryParse(getProp(xml, 'Size')?.text ?? '');
     storageClass = getProp(xml, 'StorageClass')?.text;
     versionId = getProp(xml, 'VersionId')?.text;
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('ObjectVersion', nest: () {
-      builder.element('ETag', nest: eTag);
-      builder.element('IsLatest', nest: isLatest! ? 'TRUE' : 'FALSE');
-      builder.element('Key', nest: key);
-      builder.element('LastModified', nest: lastModified!.toIso8601String());
-      builder.element('Owner', nest: owner!.toXml());
-      builder.element('Size', nest: size.toString());
-      builder.element('StorageClass', nest: storageClass);
-      builder.element('VersionId', nest: versionId);
-    });
+    builder.element(
+      'ObjectVersion',
+      nest: () {
+        if (eTag != null) {
+          builder.element('ETag', nest: eTag);
+        }
+
+        if (isLatest != null) {
+          builder.element('IsLatest', nest: isLatest! ? 'TRUE' : 'FALSE');
+        }
+
+        if (key != null) {
+          builder.element('Key', nest: key);
+        }
+
+        if (lastModified != null) {
+          builder.element(
+            'LastModified',
+            nest: lastModified!.toIso8601String(),
+          );
+        }
+
+        if (owner != null) {
+          builder.element(
+            'Owner',
+            nest: (owner!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (size != null) {
+          builder.element('Size', nest: size.toString());
+        }
+
+        if (storageClass != null) {
+          builder.element('StorageClass', nest: storageClass);
+        }
+
+        if (versionId != null) {
+          builder.element('VersionId', nest: versionId);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2489,9 +3382,7 @@ class ObjectVersion {
 
 /// Describes the location where the restore job's output is stored.
 class OutputLocation {
-  OutputLocation(
-    this.s3,
-  );
+  OutputLocation(this.s3);
 
   OutputLocation.fromXml(XmlElement? xml) {
     s3 = S3Location.fromXml(getProp(xml, 'S3'));
@@ -2499,9 +3390,17 @@ class OutputLocation {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('OutputLocation', nest: () {
-      builder.element('S3', nest: s3!.toXml());
-    });
+    builder.element(
+      'OutputLocation',
+      nest: () {
+        if (s3 != null) {
+          builder.element(
+            'S3',
+            nest: (s3!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2511,10 +3410,7 @@ class OutputLocation {
 
 /// Describes how results of the Select job are serialized.
 class OutputSerialization {
-  OutputSerialization(
-    this.cSV,
-    this.jSON,
-  );
+  OutputSerialization(this.cSV, this.jSON);
 
   OutputSerialization.fromXml(XmlElement? xml) {
     cSV = CSVOutput.fromXml(getProp(xml, 'CSV'));
@@ -2523,10 +3419,24 @@ class OutputSerialization {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('OutputSerialization', nest: () {
-      builder.element('CSV', nest: cSV!.toXml());
-      builder.element('JSON', nest: jSON!.toXml());
-    });
+    builder.element(
+      'OutputSerialization',
+      nest: () {
+        if (cSV != null) {
+          builder.element(
+            'CSV',
+            nest: (cSV!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (jSON != null) {
+          builder.element(
+            'JSON',
+            nest: (jSON!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2539,10 +3449,7 @@ class OutputSerialization {
 
 /// Container for the owner's display name and ID.
 class Owner {
-  Owner(
-    this.displayName,
-    this.iD,
-  );
+  Owner(this.displayName, this.iD);
 
   Owner.fromXml(XmlElement? xml) {
     displayName = getProp(xml, 'DisplayName')?.text;
@@ -2551,10 +3458,18 @@ class Owner {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('Owner', nest: () {
-      builder.element('DisplayName', nest: displayName);
-      builder.element('ID', nest: iD);
-    });
+    builder.element(
+      'Owner',
+      nest: () {
+        if (displayName != null) {
+          builder.element('DisplayName', nest: displayName);
+        }
+
+        if (iD != null) {
+          builder.element('ID', nest: iD);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2580,28 +3495,40 @@ class ParquetInput {
 
 /// Container for elements related to a part.
 class Part {
-  Part(
-    this.eTag,
-    this.lastModified,
-    this.partNumber,
-    this.size,
-  );
+  Part(this.eTag, this.lastModified, this.partNumber, this.size);
 
-  Part.fromXml(XmlElement xml) {
+  Part.fromXml(XmlElement? xml) {
     eTag = getProp(xml, 'ETag')?.text;
-    lastModified = DateTime.parse(getProp(xml, 'LastModified')!.text);
-    partNumber = int.tryParse(getProp(xml, 'PartNumber')!.text);
-    size = int.tryParse(getProp(xml, 'Size')!.text);
+    lastModified = DateTime.tryParse(getProp(xml, 'LastModified')?.text ?? '');
+    partNumber = int.tryParse(getProp(xml, 'PartNumber')?.text ?? '');
+    size = int.tryParse(getProp(xml, 'Size')?.text ?? '');
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('Part', nest: () {
-      builder.element('ETag', nest: eTag);
-      builder.element('LastModified', nest: lastModified!.toIso8601String());
-      builder.element('PartNumber', nest: partNumber.toString());
-      builder.element('Size', nest: size.toString());
-    });
+    builder.element(
+      'Part',
+      nest: () {
+        if (eTag != null) {
+          builder.element('ETag', nest: eTag);
+        }
+
+        if (lastModified != null) {
+          builder.element(
+            'LastModified',
+            nest: lastModified!.toIso8601String(),
+          );
+        }
+
+        if (partNumber != null) {
+          builder.element('PartNumber', nest: partNumber.toString());
+        }
+
+        if (size != null) {
+          builder.element('Size', nest: size.toString());
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2620,19 +3547,22 @@ class Part {
 
 /// The container element for a bucket's policy status.
 class PolicyStatus {
-  PolicyStatus(
-    this.isPublic,
-  );
+  PolicyStatus(this.isPublic);
 
-  PolicyStatus.fromXml(XmlElement xml) {
+  PolicyStatus.fromXml(XmlElement? xml) {
     isPublic = getProp(xml, 'IsPublic')?.text.toUpperCase() == 'TRUE';
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('PolicyStatus', nest: () {
-      builder.element('IsPublic', nest: isPublic! ? 'TRUE' : 'FALSE');
-    });
+    builder.element(
+      'PolicyStatus',
+      nest: () {
+        if (isPublic != null) {
+          builder.element('IsPublic', nest: isPublic! ? 'TRUE' : 'FALSE');
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2642,25 +3572,32 @@ class PolicyStatus {
 
 /// This data type contains information about progress of an operation.
 class Progress {
-  Progress(
-    this.bytesProcessed,
-    this.bytesReturned,
-    this.bytesScanned,
-  );
+  Progress(this.bytesProcessed, this.bytesReturned, this.bytesScanned);
 
   Progress.fromXml(XmlElement? xml) {
-    bytesProcessed = int.tryParse(getProp(xml, 'BytesProcessed')!.text);
-    bytesReturned = int.tryParse(getProp(xml, 'BytesReturned')!.text);
-    bytesScanned = int.tryParse(getProp(xml, 'BytesScanned')!.text);
+    bytesProcessed = int.tryParse(getProp(xml, 'BytesProcessed')?.text ?? '');
+    bytesReturned = int.tryParse(getProp(xml, 'BytesReturned')?.text ?? '');
+    bytesScanned = int.tryParse(getProp(xml, 'BytesScanned')?.text ?? '');
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('Progress', nest: () {
-      builder.element('BytesProcessed', nest: bytesProcessed.toString());
-      builder.element('BytesReturned', nest: bytesReturned.toString());
-      builder.element('BytesScanned', nest: bytesScanned.toString());
-    });
+    builder.element(
+      'Progress',
+      nest: () {
+        if (bytesProcessed != null) {
+          builder.element('BytesProcessed', nest: bytesProcessed.toString());
+        }
+
+        if (bytesReturned != null) {
+          builder.element('BytesReturned', nest: bytesReturned.toString());
+        }
+
+        if (bytesScanned != null) {
+          builder.element('BytesScanned', nest: bytesScanned.toString());
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2676,9 +3613,7 @@ class Progress {
 
 /// This data type contains information about the progress event of an operation.
 class ProgressEvent {
-  ProgressEvent(
-    this.details,
-  );
+  ProgressEvent(this.details);
 
   ProgressEvent.fromXml(XmlElement? xml) {
     details = Progress.fromXml(getProp(xml, 'Details'));
@@ -2686,9 +3621,17 @@ class ProgressEvent {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('ProgressEvent', nest: () {
-      builder.element('Details', nest: details!.toXml());
-    });
+    builder.element(
+      'ProgressEvent',
+      nest: () {
+        if (details != null) {
+          builder.element(
+            'Details',
+            nest: (details!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2705,7 +3648,7 @@ class PublicAccessBlockConfiguration {
     this.restrictPublicBuckets,
   );
 
-  PublicAccessBlockConfiguration.fromXml(XmlElement xml) {
+  PublicAccessBlockConfiguration.fromXml(XmlElement? xml) {
     blockPublicAcls =
         getProp(xml, 'BlockPublicAcls')?.text.toUpperCase() == 'TRUE';
     blockPublicPolicy =
@@ -2718,16 +3661,38 @@ class PublicAccessBlockConfiguration {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('PublicAccessBlockConfiguration', nest: () {
-      builder.element('BlockPublicAcls',
-          nest: blockPublicAcls! ? 'TRUE' : 'FALSE');
-      builder.element('BlockPublicPolicy',
-          nest: blockPublicPolicy! ? 'TRUE' : 'FALSE');
-      builder.element('IgnorePublicAcls',
-          nest: ignorePublicAcls! ? 'TRUE' : 'FALSE');
-      builder.element('RestrictPublicBuckets',
-          nest: restrictPublicBuckets! ? 'TRUE' : 'FALSE');
-    });
+    builder.element(
+      'PublicAccessBlockConfiguration',
+      nest: () {
+        if (blockPublicAcls != null) {
+          builder.element(
+            'BlockPublicAcls',
+            nest: blockPublicAcls! ? 'TRUE' : 'FALSE',
+          );
+        }
+
+        if (blockPublicPolicy != null) {
+          builder.element(
+            'BlockPublicPolicy',
+            nest: blockPublicPolicy! ? 'TRUE' : 'FALSE',
+          );
+        }
+
+        if (ignorePublicAcls != null) {
+          builder.element(
+            'IgnorePublicAcls',
+            nest: ignorePublicAcls! ? 'TRUE' : 'FALSE',
+          );
+        }
+
+        if (restrictPublicBuckets != null) {
+          builder.element(
+            'RestrictPublicBuckets',
+            nest: restrictPublicBuckets! ? 'TRUE' : 'FALSE',
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2746,33 +3711,46 @@ class PublicAccessBlockConfiguration {
 
 /// Specifies the configuration for publishing messages to an Amazon Simple Queue Service (Amazon SQS) queue when Amazon S3 detects specified events.
 class QueueConfiguration {
-  QueueConfiguration(
-    this.events,
-    this.filter,
-    this.id,
-    this.queueArn,
-  );
+  QueueConfiguration(this.events, this.filter, this.id, this.queueArn);
 
   QueueConfiguration.fromXml(XmlElement? xml) {
-    events = getProp(xml, 'Events')?.text;
+    events = eventsFromXml(xml);
     filter = NotificationConfigurationFilter.fromXml(getProp(xml, 'Filter'));
     id = getProp(xml, 'Id')?.text;
-    queueArn = getProp(xml, 'QueueArn')?.text;
+    queueArn = getProp(xml, 'Queue')?.text ?? getProp(xml, 'QueueArn')?.text;
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('QueueConfiguration', nest: () {
-      builder.element('Events', nest: events);
-      builder.element('Filter', nest: filter!.toXml());
-      builder.element('Id', nest: id);
-      builder.element('QueueArn', nest: queueArn);
-    });
+    builder.element(
+      'QueueConfiguration',
+      nest: () {
+        if (events != null) {
+          for (final event in events!) {
+            builder.element('Event', nest: event);
+          }
+        }
+        if (filter != null) {
+          builder.element(
+            'Filter',
+            nest: (filter!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (id != null) {
+          builder.element('Id', nest: id);
+        }
+
+        if (queueArn != null) {
+          builder.element('Queue', nest: queueArn);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
   /// A collection of bucket events for which to send notifications
-  String? events;
+  List<String>? events;
 
   /// Specifies object key name filtering rules. For information about key name filtering, see Configuring Event Notifications in the Amazon Simple Storage Service Developer Guide.
   NotificationConfigurationFilter? filter;
@@ -2786,12 +3764,7 @@ class QueueConfiguration {
 
 /// This data type is deprecated. Use QueueConfiguration for the same purposes. This data type specifies the configuration for publishing messages to an Amazon Simple Queue Service (Amazon SQS) queue when Amazon S3 detects specified events.
 class QueueConfigurationDeprecated {
-  QueueConfigurationDeprecated(
-    this.event,
-    this.events,
-    this.id,
-    this.queue,
-  );
+  QueueConfigurationDeprecated(this.event, this.events, this.id, this.queue);
 
   QueueConfigurationDeprecated.fromXml(XmlElement? xml) {
     event = getProp(xml, 'Event')?.text;
@@ -2802,12 +3775,26 @@ class QueueConfigurationDeprecated {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('QueueConfigurationDeprecated', nest: () {
-      builder.element('Event', nest: event);
-      builder.element('Events', nest: events);
-      builder.element('Id', nest: id);
-      builder.element('Queue', nest: queue);
-    });
+    builder.element(
+      'QueueConfigurationDeprecated',
+      nest: () {
+        if (event != null) {
+          builder.element('Event', nest: event);
+        }
+
+        if (events != null) {
+          builder.element('Events', nest: events);
+        }
+
+        if (id != null) {
+          builder.element('Id', nest: id);
+        }
+
+        if (queue != null) {
+          builder.element('Queue', nest: queue);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2826,9 +3813,7 @@ class QueueConfigurationDeprecated {
 
 /// The container for the records event.
 class RecordsEvent {
-  RecordsEvent(
-    this.payload,
-  );
+  RecordsEvent(this.payload);
 
   RecordsEvent.fromXml(XmlElement? xml) {
     payload = getProp(xml, 'Payload')?.text;
@@ -2836,9 +3821,14 @@ class RecordsEvent {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('RecordsEvent', nest: () {
-      builder.element('Payload', nest: payload);
-    });
+    builder.element(
+      'RecordsEvent',
+      nest: () {
+        if (payload != null) {
+          builder.element('Payload', nest: payload);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2866,13 +3856,30 @@ class Redirect {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('Redirect', nest: () {
-      builder.element('HostName', nest: hostName);
-      builder.element('HttpRedirectCode', nest: httpRedirectCode);
-      builder.element('Protocol', nest: protocol);
-      builder.element('ReplaceKeyPrefixWith', nest: replaceKeyPrefixWith);
-      builder.element('ReplaceKeyWith', nest: replaceKeyWith);
-    });
+    builder.element(
+      'Redirect',
+      nest: () {
+        if (hostName != null) {
+          builder.element('HostName', nest: hostName);
+        }
+
+        if (httpRedirectCode != null) {
+          builder.element('HttpRedirectCode', nest: httpRedirectCode);
+        }
+
+        if (protocol != null) {
+          builder.element('Protocol', nest: protocol);
+        }
+
+        if (replaceKeyPrefixWith != null) {
+          builder.element('ReplaceKeyPrefixWith', nest: replaceKeyPrefixWith);
+        }
+
+        if (replaceKeyWith != null) {
+          builder.element('ReplaceKeyWith', nest: replaceKeyWith);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2894,10 +3901,7 @@ class Redirect {
 
 /// Specifies the redirect behavior of all requests to a website endpoint of an Amazon S3 bucket.
 class RedirectAllRequestsTo {
-  RedirectAllRequestsTo(
-    this.hostName,
-    this.protocol,
-  );
+  RedirectAllRequestsTo(this.hostName, this.protocol);
 
   RedirectAllRequestsTo.fromXml(XmlElement? xml) {
     hostName = getProp(xml, 'HostName')?.text;
@@ -2906,10 +3910,18 @@ class RedirectAllRequestsTo {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('RedirectAllRequestsTo', nest: () {
-      builder.element('HostName', nest: hostName);
-      builder.element('Protocol', nest: protocol);
-    });
+    builder.element(
+      'RedirectAllRequestsTo',
+      nest: () {
+        if (hostName != null) {
+          builder.element('HostName', nest: hostName);
+        }
+
+        if (protocol != null) {
+          builder.element('Protocol', nest: protocol);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2922,22 +3934,30 @@ class RedirectAllRequestsTo {
 
 /// A container for replication rules. You can add up to 1,000 rules. The maximum size of a replication configuration is 2 MB.
 class ReplicationConfiguration {
-  ReplicationConfiguration(
-    this.role,
-    this.rules,
-  );
+  ReplicationConfiguration(this.role, this.rules);
 
-  ReplicationConfiguration.fromXml(XmlElement xml) {
+  ReplicationConfiguration.fromXml(XmlElement? xml) {
     role = getProp(xml, 'Role')?.text;
     rules = ReplicationRule.fromXml(getProp(xml, 'Rules'));
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('ReplicationConfiguration', nest: () {
-      builder.element('Role', nest: role);
-      builder.element('Rules', nest: rules!.toXml());
-    });
+    builder.element(
+      'ReplicationConfiguration',
+      nest: () {
+        if (role != null) {
+          builder.element('Role', nest: role);
+        }
+
+        if (rules != null) {
+          builder.element(
+            'Rules',
+            nest: (rules!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -2964,35 +3984,85 @@ class ReplicationRule {
 
   ReplicationRule.fromXml(XmlElement? xml) {
     deleteMarkerReplication = DeleteMarkerReplication.fromXml(
-        getProp(xml, 'DeleteMarkerReplication'));
+      getProp(xml, 'DeleteMarkerReplication'),
+    );
     destination = Destination.fromXml(getProp(xml, 'Destination'));
     existingObjectReplication = ExistingObjectReplication.fromXml(
-        getProp(xml, 'ExistingObjectReplication'));
+      getProp(xml, 'ExistingObjectReplication'),
+    );
     filter = ReplicationRuleFilter.fromXml(getProp(xml, 'Filter'));
     iD = getProp(xml, 'ID')?.text;
     prefix = getProp(xml, 'Prefix')?.text;
-    priority = int.tryParse(getProp(xml, 'Priority')!.text);
+    priority = int.tryParse(getProp(xml, 'Priority')?.text ?? '');
     sourceSelectionCriteria = SourceSelectionCriteria.fromXml(
-        getProp(xml, 'SourceSelectionCriteria'));
+      getProp(xml, 'SourceSelectionCriteria'),
+    );
     status = getProp(xml, 'Status')?.text;
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('ReplicationRule', nest: () {
-      builder.element('DeleteMarkerReplication',
-          nest: deleteMarkerReplication!.toXml());
-      builder.element('Destination', nest: destination!.toXml());
-      builder.element('ExistingObjectReplication',
-          nest: existingObjectReplication!.toXml());
-      builder.element('Filter', nest: filter!.toXml());
-      builder.element('ID', nest: iD);
-      builder.element('Prefix', nest: prefix);
-      builder.element('Priority', nest: priority.toString());
-      builder.element('SourceSelectionCriteria',
-          nest: sourceSelectionCriteria!.toXml());
-      builder.element('Status', nest: status);
-    });
+    builder.element(
+      'ReplicationRule',
+      nest: () {
+        if (deleteMarkerReplication != null) {
+          builder.element(
+            'DeleteMarkerReplication',
+            nest: (deleteMarkerReplication!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (destination != null) {
+          builder.element(
+            'Destination',
+            nest: (destination!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (existingObjectReplication != null) {
+          builder.element(
+            'ExistingObjectReplication',
+            nest: (existingObjectReplication!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (filter != null) {
+          builder.element(
+            'Filter',
+            nest: (filter!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (iD != null) {
+          builder.element('ID', nest: iD);
+        }
+
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (priority != null) {
+          builder.element('Priority', nest: priority.toString());
+        }
+
+        if (sourceSelectionCriteria != null) {
+          builder.element(
+            'SourceSelectionCriteria',
+            nest: (sourceSelectionCriteria!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (status != null) {
+          builder.element('Status', nest: status);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3026,10 +4096,7 @@ class ReplicationRule {
 
 /// A container for specifying rule filters. The filters determine the subset of objects to which the rule applies. This element is required only if you specify more than one filter.
 class ReplicationRuleAndOperator {
-  ReplicationRuleAndOperator(
-    this.prefix,
-    this.tags,
-  );
+  ReplicationRuleAndOperator(this.prefix, this.tags);
 
   ReplicationRuleAndOperator.fromXml(XmlElement? xml) {
     prefix = getProp(xml, 'Prefix')?.text;
@@ -3038,10 +4105,21 @@ class ReplicationRuleAndOperator {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('ReplicationRuleAndOperator', nest: () {
-      builder.element('Prefix', nest: prefix);
-      builder.element('Tags', nest: tags!.toXml());
-    });
+    builder.element(
+      'ReplicationRuleAndOperator',
+      nest: () {
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (tags != null) {
+          builder.element(
+            'Tags',
+            nest: (tags!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3054,11 +4132,7 @@ class ReplicationRuleAndOperator {
 
 /// A filter that identifies the subset of objects to which the replication rule applies. A Filter must specify exactly one Prefix, Tag, or an And child element.
 class ReplicationRuleFilter {
-  ReplicationRuleFilter(
-    this.and,
-    this.prefix,
-    this.tag,
-  );
+  ReplicationRuleFilter(this.and, this.prefix, this.tag);
 
   ReplicationRuleFilter.fromXml(XmlElement? xml) {
     and = ReplicationRuleAndOperator.fromXml(getProp(xml, 'And'));
@@ -3068,11 +4142,28 @@ class ReplicationRuleFilter {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('ReplicationRuleFilter', nest: () {
-      builder.element('And', nest: and!.toXml());
-      builder.element('Prefix', nest: prefix);
-      builder.element('Tag', nest: tag!.toXml());
-    });
+    builder.element(
+      'ReplicationRuleFilter',
+      nest: () {
+        if (and != null) {
+          builder.element(
+            'And',
+            nest: (and!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (tag != null) {
+          builder.element(
+            'Tag',
+            nest: (tag!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3088,10 +4179,7 @@ class ReplicationRuleFilter {
 
 ///  A container specifying S3 Replication Time Control (S3 RTC) related information, including whether S3 RTC is enabled and the time when all objects and operations on objects must be replicated. Must be specified together with a Metrics block.
 class ReplicationTime {
-  ReplicationTime(
-    this.status,
-    this.time,
-  );
+  ReplicationTime(this.status, this.time);
 
   ReplicationTime.fromXml(XmlElement? xml) {
     status = getProp(xml, 'Status')?.text;
@@ -3100,10 +4188,21 @@ class ReplicationTime {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('ReplicationTime', nest: () {
-      builder.element('Status', nest: status);
-      builder.element('Time', nest: time!.toXml());
-    });
+    builder.element(
+      'ReplicationTime',
+      nest: () {
+        if (status != null) {
+          builder.element('Status', nest: status);
+        }
+
+        if (time != null) {
+          builder.element(
+            'Time',
+            nest: (time!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3116,19 +4215,22 @@ class ReplicationTime {
 
 ///  A container specifying the time value for S3 Replication Time Control (S3 RTC) and replication metrics EventThreshold.
 class ReplicationTimeValue {
-  ReplicationTimeValue(
-    this.minutes,
-  );
+  ReplicationTimeValue(this.minutes);
 
   ReplicationTimeValue.fromXml(XmlElement? xml) {
-    minutes = int.tryParse(getProp(xml, 'Minutes')!.text);
+    minutes = int.tryParse(getProp(xml, 'Minutes')?.text ?? '');
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('ReplicationTimeValue', nest: () {
-      builder.element('Minutes', nest: minutes.toString());
-    });
+    builder.element(
+      'ReplicationTimeValue',
+      nest: () {
+        if (minutes != null) {
+          builder.element('Minutes', nest: minutes.toString());
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3138,19 +4240,22 @@ class ReplicationTimeValue {
 
 /// Container for Payer.
 class RequestPaymentConfiguration {
-  RequestPaymentConfiguration(
-    this.payer,
-  );
+  RequestPaymentConfiguration(this.payer);
 
-  RequestPaymentConfiguration.fromXml(XmlElement xml) {
+  RequestPaymentConfiguration.fromXml(XmlElement? xml) {
     payer = getProp(xml, 'Payer')?.text;
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('RequestPaymentConfiguration', nest: () {
-      builder.element('Payer', nest: payer);
-    });
+    builder.element(
+      'RequestPaymentConfiguration',
+      nest: () {
+        if (payer != null) {
+          builder.element('Payer', nest: payer);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3160,19 +4265,22 @@ class RequestPaymentConfiguration {
 
 /// Container for specifying if periodic QueryProgress messages should be sent.
 class RequestProgress {
-  RequestProgress(
-    this.enabled,
-  );
+  RequestProgress(this.enabled);
 
-  RequestProgress.fromXml(XmlElement xml) {
+  RequestProgress.fromXml(XmlElement? xml) {
     enabled = getProp(xml, 'Enabled')?.text.toUpperCase() == 'TRUE';
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('RequestProgress', nest: () {
-      builder.element('Enabled', nest: enabled! ? 'TRUE' : 'FALSE');
-    });
+    builder.element(
+      'RequestProgress',
+      nest: () {
+        if (enabled != null) {
+          builder.element('Enabled', nest: enabled! ? 'TRUE' : 'FALSE');
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3192,30 +4300,66 @@ class RestoreRequest {
     this.type,
   );
 
-  RestoreRequest.fromXml(XmlElement xml) {
-    days = int.tryParse(getProp(xml, 'Days')!.text);
+  RestoreRequest.fromXml(XmlElement? xml) {
+    days = int.tryParse(getProp(xml, 'Days')?.text ?? '');
     description = getProp(xml, 'Description')?.text;
-    glacierJobParameters =
-        GlacierJobParameters.fromXml(getProp(xml, 'GlacierJobParameters'));
+    glacierJobParameters = GlacierJobParameters.fromXml(
+      getProp(xml, 'GlacierJobParameters'),
+    );
     outputLocation = OutputLocation.fromXml(getProp(xml, 'OutputLocation'));
-    selectParameters =
-        SelectParameters.fromXml(getProp(xml, 'SelectParameters'));
+    selectParameters = SelectParameters.fromXml(
+      getProp(xml, 'SelectParameters'),
+    );
     tier = getProp(xml, 'Tier')?.text;
     type = getProp(xml, 'Type')?.text;
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('RestoreRequest', nest: () {
-      builder.element('Days', nest: days.toString());
-      builder.element('Description', nest: description);
-      builder.element('GlacierJobParameters',
-          nest: glacierJobParameters!.toXml());
-      builder.element('OutputLocation', nest: outputLocation!.toXml());
-      builder.element('SelectParameters', nest: selectParameters!.toXml());
-      builder.element('Tier', nest: tier);
-      builder.element('Type', nest: type);
-    });
+    builder.element(
+      'RestoreRequest',
+      nest: () {
+        if (days != null) {
+          builder.element('Days', nest: days.toString());
+        }
+
+        if (description != null) {
+          builder.element('Description', nest: description);
+        }
+
+        if (glacierJobParameters != null) {
+          builder.element(
+            'GlacierJobParameters',
+            nest: (glacierJobParameters!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (outputLocation != null) {
+          builder.element(
+            'OutputLocation',
+            nest: (outputLocation!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (selectParameters != null) {
+          builder.element(
+            'SelectParameters',
+            nest:
+                (selectParameters!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (tier != null) {
+          builder.element('Tier', nest: tier);
+        }
+
+        if (type != null) {
+          builder.element('Type', nest: type);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3243,10 +4387,7 @@ class RestoreRequest {
 
 /// Specifies the redirect behavior and when a redirect is applied.
 class RoutingRule {
-  RoutingRule(
-    this.condition,
-    this.redirect,
-  );
+  RoutingRule(this.condition, this.redirect);
 
   RoutingRule.fromXml(XmlElement? xml) {
     condition = Condition.fromXml(getProp(xml, 'Condition'));
@@ -3255,10 +4396,24 @@ class RoutingRule {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('RoutingRule', nest: () {
-      builder.element('Condition', nest: condition!.toXml());
-      builder.element('Redirect', nest: redirect!.toXml());
-    });
+    builder.element(
+      'RoutingRule',
+      nest: () {
+        if (condition != null) {
+          builder.element(
+            'Condition',
+            nest: (condition!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (redirect != null) {
+          builder.element(
+            'Redirect',
+            nest: (redirect!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3284,13 +4439,16 @@ class Rule {
 
   Rule.fromXml(XmlElement? xml) {
     abortIncompleteMultipartUpload = AbortIncompleteMultipartUpload.fromXml(
-        getProp(xml, 'AbortIncompleteMultipartUpload'));
+      getProp(xml, 'AbortIncompleteMultipartUpload'),
+    );
     expiration = LifecycleExpiration.fromXml(getProp(xml, 'Expiration'));
     iD = getProp(xml, 'ID')?.text;
     noncurrentVersionExpiration = NoncurrentVersionExpiration.fromXml(
-        getProp(xml, 'NoncurrentVersionExpiration'));
+      getProp(xml, 'NoncurrentVersionExpiration'),
+    );
     noncurrentVersionTransition = NoncurrentVersionTransition.fromXml(
-        getProp(xml, 'NoncurrentVersionTransition'));
+      getProp(xml, 'NoncurrentVersionTransition'),
+    );
     prefix = getProp(xml, 'Prefix')?.text;
     status = getProp(xml, 'Status')?.text;
     transition = Transition.fromXml(getProp(xml, 'Transition'));
@@ -3298,19 +4456,63 @@ class Rule {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('Rule', nest: () {
-      builder.element('AbortIncompleteMultipartUpload',
-          nest: abortIncompleteMultipartUpload!.toXml());
-      builder.element('Expiration', nest: expiration!.toXml());
-      builder.element('ID', nest: iD);
-      builder.element('NoncurrentVersionExpiration',
-          nest: noncurrentVersionExpiration!.toXml());
-      builder.element('NoncurrentVersionTransition',
-          nest: noncurrentVersionTransition!.toXml());
-      builder.element('Prefix', nest: prefix);
-      builder.element('Status', nest: status);
-      builder.element('Transition', nest: transition!.toXml());
-    });
+    builder.element(
+      'Rule',
+      nest: () {
+        if (abortIncompleteMultipartUpload != null) {
+          builder.element(
+            'AbortIncompleteMultipartUpload',
+            nest: (abortIncompleteMultipartUpload!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (expiration != null) {
+          builder.element(
+            'Expiration',
+            nest: (expiration!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (iD != null) {
+          builder.element('ID', nest: iD);
+        }
+
+        if (noncurrentVersionExpiration != null) {
+          builder.element(
+            'NoncurrentVersionExpiration',
+            nest: (noncurrentVersionExpiration!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (noncurrentVersionTransition != null) {
+          builder.element(
+            'NoncurrentVersionTransition',
+            nest: (noncurrentVersionTransition!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (status != null) {
+          builder.element('Status', nest: status);
+        }
+
+        if (transition != null) {
+          builder.element(
+            'Transition',
+            nest: (transition!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3341,9 +4543,7 @@ class Rule {
 
 /// A container for object key name prefix and suffix filtering rules.
 class S3KeyFilter {
-  S3KeyFilter(
-    this.filterRules,
-  );
+  S3KeyFilter(this.filterRules);
 
   S3KeyFilter.fromXml(XmlElement? xml) {
     filterRules = FilterRule.fromXml(getProp(xml, 'FilterRules'));
@@ -3351,9 +4551,17 @@ class S3KeyFilter {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('S3KeyFilter', nest: () {
-      builder.element('FilterRules', nest: filterRules!.toXml());
-    });
+    builder.element(
+      'S3KeyFilter',
+      nest: () {
+        if (filterRules != null) {
+          builder.element(
+            'FilterRules',
+            nest: (filterRules!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3387,16 +4595,56 @@ class S3Location {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('S3Location', nest: () {
-      builder.element('AccessControlList', nest: accessControlList!.toXml());
-      builder.element('BucketName', nest: bucketName);
-      builder.element('CannedACL', nest: cannedACL);
-      builder.element('Encryption', nest: encryption!.toXml());
-      builder.element('Prefix', nest: prefix);
-      builder.element('StorageClass', nest: storageClass);
-      builder.element('Tagging', nest: tagging!.toXml());
-      builder.element('UserMetadata', nest: userMetadata!.toXml());
-    });
+    builder.element(
+      'S3Location',
+      nest: () {
+        if (accessControlList != null) {
+          builder.element(
+            'AccessControlList',
+            nest: (accessControlList!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (bucketName != null) {
+          builder.element('BucketName', nest: bucketName);
+        }
+
+        if (cannedACL != null) {
+          builder.element('CannedACL', nest: cannedACL);
+        }
+
+        if (encryption != null) {
+          builder.element(
+            'Encryption',
+            nest: (encryption!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (prefix != null) {
+          builder.element('Prefix', nest: prefix);
+        }
+
+        if (storageClass != null) {
+          builder.element('StorageClass', nest: storageClass);
+        }
+
+        if (tagging != null) {
+          builder.element(
+            'Tagging',
+            nest: (tagging!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (userMetadata != null) {
+          builder.element(
+            'UserMetadata',
+            nest: (userMetadata!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3427,22 +4675,27 @@ class S3Location {
 
 /// Specifies the byte range of the object to get the records from. A record is processed when its first byte is contained by the range. This parameter is optional, but when specified, it must not be empty. See RFC 2616, Section 14.35.1 about how to specify the start and end of the range.
 class ScanRange {
-  ScanRange(
-    this.end,
-    this.start,
-  );
+  ScanRange(this.end, this.start);
 
-  ScanRange.fromXml(XmlElement xml) {
-    end = int.tryParse(getProp(xml, 'End')!.text);
-    start = int.tryParse(getProp(xml, 'Start')!.text);
+  ScanRange.fromXml(XmlElement? xml) {
+    end = int.tryParse(getProp(xml, 'End')?.text ?? '');
+    start = int.tryParse(getProp(xml, 'Start')?.text ?? '');
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('ScanRange', nest: () {
-      builder.element('End', nest: end.toString());
-      builder.element('Start', nest: start.toString());
-    });
+    builder.element(
+      'ScanRange',
+      nest: () {
+        if (end != null) {
+          builder.element('End', nest: end.toString());
+        }
+
+        if (start != null) {
+          builder.element('Start', nest: start.toString());
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3463,7 +4716,7 @@ class SelectObjectContentEventStream {
     this.stats,
   );
 
-  SelectObjectContentEventStream.fromXml(XmlElement xml) {
+  SelectObjectContentEventStream.fromXml(XmlElement? xml) {
     cont = ContinuationEvent.fromXml(getProp(xml, 'Cont'));
     end = EndEvent.fromXml(getProp(xml, 'End'));
     progress = ProgressEvent.fromXml(getProp(xml, 'Progress'));
@@ -3473,13 +4726,45 @@ class SelectObjectContentEventStream {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('SelectObjectContentEventStream', nest: () {
-      builder.element('Cont', nest: cont!.toXml());
-      builder.element('End', nest: end!.toXml());
-      builder.element('Progress', nest: progress!.toXml());
-      builder.element('Records', nest: records!.toXml());
-      builder.element('Stats', nest: stats!.toXml());
-    });
+    builder.element(
+      'SelectObjectContentEventStream',
+      nest: () {
+        if (cont != null) {
+          builder.element(
+            'Cont',
+            nest: (cont!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (end != null) {
+          builder.element(
+            'End',
+            nest: (end!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (progress != null) {
+          builder.element(
+            'Progress',
+            nest: (progress!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (records != null) {
+          builder.element(
+            'Records',
+            nest: (records!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (stats != null) {
+          builder.element(
+            'Stats',
+            nest: (stats!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3511,21 +4796,46 @@ class SelectParameters {
   SelectParameters.fromXml(XmlElement? xml) {
     expression = getProp(xml, 'Expression')?.text;
     expressionType = getProp(xml, 'ExpressionType')?.text;
-    inputSerialization =
-        InputSerialization.fromXml(getProp(xml, 'InputSerialization'));
-    outputSerialization =
-        OutputSerialization.fromXml(getProp(xml, 'OutputSerialization'));
+    inputSerialization = InputSerialization.fromXml(
+      getProp(xml, 'InputSerialization'),
+    );
+    outputSerialization = OutputSerialization.fromXml(
+      getProp(xml, 'OutputSerialization'),
+    );
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('SelectParameters', nest: () {
-      builder.element('Expression', nest: expression);
-      builder.element('ExpressionType', nest: expressionType);
-      builder.element('InputSerialization', nest: inputSerialization!.toXml());
-      builder.element('OutputSerialization',
-          nest: outputSerialization!.toXml());
-    });
+    builder.element(
+      'SelectParameters',
+      nest: () {
+        if (expression != null) {
+          builder.element('Expression', nest: expression);
+        }
+
+        if (expressionType != null) {
+          builder.element('ExpressionType', nest: expressionType);
+        }
+
+        if (inputSerialization != null) {
+          builder.element(
+            'InputSerialization',
+            nest: (inputSerialization!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (outputSerialization != null) {
+          builder.element(
+            'OutputSerialization',
+            nest: (outputSerialization!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3544,10 +4854,7 @@ class SelectParameters {
 
 /// Describes the default server-side encryption to apply to new objects in the bucket. If a PUT Object request doesn't specify any server-side encryption, this default encryption will be applied. For more information, see PUT Bucket encryption in the Amazon Simple Storage Service API Reference.
 class ServerSideEncryptionByDefault {
-  ServerSideEncryptionByDefault(
-    this.kMSMasterKeyID,
-    this.sSEAlgorithm,
-  );
+  ServerSideEncryptionByDefault(this.kMSMasterKeyID, this.sSEAlgorithm);
 
   ServerSideEncryptionByDefault.fromXml(XmlElement? xml) {
     kMSMasterKeyID = getProp(xml, 'KMSMasterKeyID')?.text;
@@ -3556,10 +4863,18 @@ class ServerSideEncryptionByDefault {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('ServerSideEncryptionByDefault', nest: () {
-      builder.element('KMSMasterKeyID', nest: kMSMasterKeyID);
-      builder.element('SSEAlgorithm', nest: sSEAlgorithm);
-    });
+    builder.element(
+      'ServerSideEncryptionByDefault',
+      nest: () {
+        if (kMSMasterKeyID != null) {
+          builder.element('KMSMasterKeyID', nest: kMSMasterKeyID);
+        }
+
+        if (sSEAlgorithm != null) {
+          builder.element('SSEAlgorithm', nest: sSEAlgorithm);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3572,19 +4887,25 @@ class ServerSideEncryptionByDefault {
 
 /// Specifies the default server-side-encryption configuration.
 class ServerSideEncryptionConfiguration {
-  ServerSideEncryptionConfiguration(
-    this.rules,
-  );
+  ServerSideEncryptionConfiguration(this.rules);
 
-  ServerSideEncryptionConfiguration.fromXml(XmlElement xml) {
+  ServerSideEncryptionConfiguration.fromXml(XmlElement? xml) {
     rules = ServerSideEncryptionRule.fromXml(getProp(xml, 'Rules'));
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('ServerSideEncryptionConfiguration', nest: () {
-      builder.element('Rules', nest: rules!.toXml());
-    });
+    builder.element(
+      'ServerSideEncryptionConfiguration',
+      nest: () {
+        if (rules != null) {
+          builder.element(
+            'Rules',
+            nest: (rules!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3594,21 +4915,29 @@ class ServerSideEncryptionConfiguration {
 
 /// Specifies the default server-side encryption configuration.
 class ServerSideEncryptionRule {
-  ServerSideEncryptionRule(
-    this.applyServerSideEncryptionByDefault,
-  );
+  ServerSideEncryptionRule(this.applyServerSideEncryptionByDefault);
 
   ServerSideEncryptionRule.fromXml(XmlElement? xml) {
     applyServerSideEncryptionByDefault = ServerSideEncryptionByDefault.fromXml(
-        getProp(xml, 'ApplyServerSideEncryptionByDefault'));
+      getProp(xml, 'ApplyServerSideEncryptionByDefault'),
+    );
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('ServerSideEncryptionRule', nest: () {
-      builder.element('ApplyServerSideEncryptionByDefault',
-          nest: applyServerSideEncryptionByDefault!.toXml());
-    });
+    builder.element(
+      'ServerSideEncryptionRule',
+      nest: () {
+        if (applyServerSideEncryptionByDefault != null) {
+          builder.element(
+            'ApplyServerSideEncryptionByDefault',
+            nest: (applyServerSideEncryptionByDefault!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3618,21 +4947,29 @@ class ServerSideEncryptionRule {
 
 /// A container that describes additional filters for identifying the source objects that you want to replicate. You can choose to enable or disable the replication of these objects. Currently, Amazon S3 supports only the filter that you can specify for objects created with server-side encryption using a customer master key (CMK) stored in AWS Key Management Service (SSE-KMS).
 class SourceSelectionCriteria {
-  SourceSelectionCriteria(
-    this.sseKmsEncryptedObjects,
-  );
+  SourceSelectionCriteria(this.sseKmsEncryptedObjects);
 
   SourceSelectionCriteria.fromXml(XmlElement? xml) {
-    sseKmsEncryptedObjects =
-        SseKmsEncryptedObjects.fromXml(getProp(xml, 'SseKmsEncryptedObjects'));
+    sseKmsEncryptedObjects = SseKmsEncryptedObjects.fromXml(
+      getProp(xml, 'SseKmsEncryptedObjects'),
+    );
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('SourceSelectionCriteria', nest: () {
-      builder.element('SseKmsEncryptedObjects',
-          nest: sseKmsEncryptedObjects!.toXml());
-    });
+    builder.element(
+      'SourceSelectionCriteria',
+      nest: () {
+        if (sseKmsEncryptedObjects != null) {
+          builder.element(
+            'SseKmsEncryptedObjects',
+            nest: (sseKmsEncryptedObjects!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3642,9 +4979,7 @@ class SourceSelectionCriteria {
 
 /// Specifies the use of SSE-KMS to encrypt delivered inventory reports.
 class SSEKMS {
-  SSEKMS(
-    this.keyId,
-  );
+  SSEKMS(this.keyId);
 
   SSEKMS.fromXml(XmlElement? xml) {
     keyId = getProp(xml, 'KeyId')?.text;
@@ -3652,9 +4987,14 @@ class SSEKMS {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('SSEKMS', nest: () {
-      builder.element('KeyId', nest: keyId);
-    });
+    builder.element(
+      'SSEKMS',
+      nest: () {
+        if (keyId != null) {
+          builder.element('KeyId', nest: keyId);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3664,9 +5004,7 @@ class SSEKMS {
 
 /// A container for filter information for the selection of S3 objects encrypted with AWS KMS.
 class SseKmsEncryptedObjects {
-  SseKmsEncryptedObjects(
-    this.status,
-  );
+  SseKmsEncryptedObjects(this.status);
 
   SseKmsEncryptedObjects.fromXml(XmlElement? xml) {
     status = getProp(xml, 'Status')?.text;
@@ -3674,9 +5012,14 @@ class SseKmsEncryptedObjects {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('SseKmsEncryptedObjects', nest: () {
-      builder.element('Status', nest: status);
-    });
+    builder.element(
+      'SseKmsEncryptedObjects',
+      nest: () {
+        if (status != null) {
+          builder.element('Status', nest: status);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3699,25 +5042,32 @@ class SSES3 {
 
 /// Container for the stats details.
 class Stats {
-  Stats(
-    this.bytesProcessed,
-    this.bytesReturned,
-    this.bytesScanned,
-  );
+  Stats(this.bytesProcessed, this.bytesReturned, this.bytesScanned);
 
   Stats.fromXml(XmlElement? xml) {
-    bytesProcessed = int.tryParse(getProp(xml, 'BytesProcessed')!.text);
-    bytesReturned = int.tryParse(getProp(xml, 'BytesReturned')!.text);
-    bytesScanned = int.tryParse(getProp(xml, 'BytesScanned')!.text);
+    bytesProcessed = int.tryParse(getProp(xml, 'BytesProcessed')?.text ?? '');
+    bytesReturned = int.tryParse(getProp(xml, 'BytesReturned')?.text ?? '');
+    bytesScanned = int.tryParse(getProp(xml, 'BytesScanned')?.text ?? '');
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('Stats', nest: () {
-      builder.element('BytesProcessed', nest: bytesProcessed.toString());
-      builder.element('BytesReturned', nest: bytesReturned.toString());
-      builder.element('BytesScanned', nest: bytesScanned.toString());
-    });
+    builder.element(
+      'Stats',
+      nest: () {
+        if (bytesProcessed != null) {
+          builder.element('BytesProcessed', nest: bytesProcessed.toString());
+        }
+
+        if (bytesReturned != null) {
+          builder.element('BytesReturned', nest: bytesReturned.toString());
+        }
+
+        if (bytesScanned != null) {
+          builder.element('BytesScanned', nest: bytesScanned.toString());
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3733,9 +5083,7 @@ class Stats {
 
 /// Container for the Stats Event.
 class StatsEvent {
-  StatsEvent(
-    this.details,
-  );
+  StatsEvent(this.details);
 
   StatsEvent.fromXml(XmlElement? xml) {
     details = Stats.fromXml(getProp(xml, 'Details'));
@@ -3743,9 +5091,17 @@ class StatsEvent {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('StatsEvent', nest: () {
-      builder.element('Details', nest: details!.toXml());
-    });
+    builder.element(
+      'StatsEvent',
+      nest: () {
+        if (details != null) {
+          builder.element(
+            'Details',
+            nest: (details!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3755,20 +5111,27 @@ class StatsEvent {
 
 /// Specifies data related to access patterns to be collected and made available to analyze the tradeoffs between different storage classes for an Amazon S3 bucket.
 class StorageClassAnalysis {
-  StorageClassAnalysis(
-    this.dataExport,
-  );
+  StorageClassAnalysis(this.dataExport);
 
   StorageClassAnalysis.fromXml(XmlElement? xml) {
-    dataExport =
-        StorageClassAnalysisDataExport.fromXml(getProp(xml, 'DataExport'));
+    dataExport = StorageClassAnalysisDataExport.fromXml(
+      getProp(xml, 'DataExport'),
+    );
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('StorageClassAnalysis', nest: () {
-      builder.element('DataExport', nest: dataExport!.toXml());
-    });
+    builder.element(
+      'StorageClassAnalysis',
+      nest: () {
+        if (dataExport != null) {
+          builder.element(
+            'DataExport',
+            nest: (dataExport!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3778,23 +5141,32 @@ class StorageClassAnalysis {
 
 /// Container for data related to the storage class analysis for an Amazon S3 bucket for export.
 class StorageClassAnalysisDataExport {
-  StorageClassAnalysisDataExport(
-    this.destination,
-    this.outputSchemaVersion,
-  );
+  StorageClassAnalysisDataExport(this.destination, this.outputSchemaVersion);
 
   StorageClassAnalysisDataExport.fromXml(XmlElement? xml) {
-    destination =
-        AnalyticsExportDestination.fromXml(getProp(xml, 'Destination'));
+    destination = AnalyticsExportDestination.fromXml(
+      getProp(xml, 'Destination'),
+    );
     outputSchemaVersion = getProp(xml, 'OutputSchemaVersion')?.text;
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('StorageClassAnalysisDataExport', nest: () {
-      builder.element('Destination', nest: destination!.toXml());
-      builder.element('OutputSchemaVersion', nest: outputSchemaVersion);
-    });
+    builder.element(
+      'StorageClassAnalysisDataExport',
+      nest: () {
+        if (destination != null) {
+          builder.element(
+            'Destination',
+            nest: (destination!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (outputSchemaVersion != null) {
+          builder.element('OutputSchemaVersion', nest: outputSchemaVersion);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3807,10 +5179,7 @@ class StorageClassAnalysisDataExport {
 
 /// A container of a key value name pair.
 class Tag {
-  Tag(
-    this.key,
-    this.value,
-  );
+  Tag(this.key, this.value);
 
   Tag.fromXml(XmlElement? xml) {
     key = getProp(xml, 'Key')?.text;
@@ -3819,10 +5188,18 @@ class Tag {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('Tag', nest: () {
-      builder.element('Key', nest: key);
-      builder.element('Value', nest: value);
-    });
+    builder.element(
+      'Tag',
+      nest: () {
+        if (key != null) {
+          builder.element('Key', nest: key);
+        }
+
+        if (value != null) {
+          builder.element('Value', nest: value);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3835,9 +5212,7 @@ class Tag {
 
 /// Container for TagSet elements.
 class Tagging {
-  Tagging(
-    this.tagSet,
-  );
+  Tagging(this.tagSet);
 
   Tagging.fromXml(XmlElement? xml) {
     tagSet = Tag.fromXml(getProp(xml, 'TagSet'));
@@ -3845,9 +5220,17 @@ class Tagging {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('Tagging', nest: () {
-      builder.element('TagSet', nest: tagSet!.toXml());
-    });
+    builder.element(
+      'Tagging',
+      nest: () {
+        if (tagSet != null) {
+          builder.element(
+            'TagSet',
+            nest: (tagSet!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3857,10 +5240,7 @@ class Tagging {
 
 /// Container for granting information.
 class TargetGrant {
-  TargetGrant(
-    this.grantee,
-    this.permission,
-  );
+  TargetGrant(this.grantee, this.permission);
 
   TargetGrant.fromXml(XmlElement? xml) {
     grantee = Grantee.fromXml(getProp(xml, 'Grantee'));
@@ -3869,10 +5249,21 @@ class TargetGrant {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('TargetGrant', nest: () {
-      builder.element('Grantee', nest: grantee!.toXml());
-      builder.element('Permission', nest: permission);
-    });
+    builder.element(
+      'TargetGrant',
+      nest: () {
+        if (grantee != null) {
+          builder.element(
+            'Grantee',
+            nest: (grantee!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (permission != null) {
+          builder.element('Permission', nest: permission);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3885,33 +5276,46 @@ class TargetGrant {
 
 /// A container for specifying the configuration for publication of messages to an Amazon Simple Notification Service (Amazon SNS) topic when Amazon S3 detects specified events.
 class TopicConfiguration {
-  TopicConfiguration(
-    this.events,
-    this.filter,
-    this.id,
-    this.topicArn,
-  );
+  TopicConfiguration(this.events, this.filter, this.id, this.topicArn);
 
   TopicConfiguration.fromXml(XmlElement? xml) {
-    events = getProp(xml, 'Events')?.text;
+    events = eventsFromXml(xml);
     filter = NotificationConfigurationFilter.fromXml(getProp(xml, 'Filter'));
     id = getProp(xml, 'Id')?.text;
-    topicArn = getProp(xml, 'TopicArn')?.text;
+    topicArn = getProp(xml, 'Topic')?.text ?? getProp(xml, 'TopicArn')?.text;
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('TopicConfiguration', nest: () {
-      builder.element('Events', nest: events);
-      builder.element('Filter', nest: filter!.toXml());
-      builder.element('Id', nest: id);
-      builder.element('TopicArn', nest: topicArn);
-    });
+    builder.element(
+      'TopicConfiguration',
+      nest: () {
+        if (events != null) {
+          for (final event in events!) {
+            builder.element('Event', nest: event);
+          }
+        }
+        if (filter != null) {
+          builder.element(
+            'Filter',
+            nest: (filter!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (id != null) {
+          builder.element('Id', nest: id);
+        }
+
+        if (topicArn != null) {
+          builder.element('Topic', nest: topicArn);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
   /// The Amazon S3 bucket event about which to send notifications. For more information, see Supported Event Types in the Amazon Simple Storage Service Developer Guide.
-  String? events;
+  List<String>? events;
 
   /// Specifies object key name filtering rules. For information about key name filtering, see Configuring Event Notifications in the Amazon Simple Storage Service Developer Guide.
   NotificationConfigurationFilter? filter;
@@ -3925,12 +5329,7 @@ class TopicConfiguration {
 
 /// A container for specifying the configuration for publication of messages to an Amazon Simple Notification Service (Amazon SNS) topic when Amazon S3 detects specified events. This data type is deprecated. Use TopicConfiguration instead.
 class TopicConfigurationDeprecated {
-  TopicConfigurationDeprecated(
-    this.event,
-    this.events,
-    this.id,
-    this.topic,
-  );
+  TopicConfigurationDeprecated(this.event, this.events, this.id, this.topic);
 
   TopicConfigurationDeprecated.fromXml(XmlElement? xml) {
     event = getProp(xml, 'Event')?.text;
@@ -3941,12 +5340,26 @@ class TopicConfigurationDeprecated {
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('TopicConfigurationDeprecated', nest: () {
-      builder.element('Event', nest: event);
-      builder.element('Events', nest: events);
-      builder.element('Id', nest: id);
-      builder.element('Topic', nest: topic);
-    });
+    builder.element(
+      'TopicConfigurationDeprecated',
+      nest: () {
+        if (event != null) {
+          builder.element('Event', nest: event);
+        }
+
+        if (events != null) {
+          builder.element('Events', nest: events);
+        }
+
+        if (id != null) {
+          builder.element('Id', nest: id);
+        }
+
+        if (topic != null) {
+          builder.element('Topic', nest: topic);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3965,25 +5378,32 @@ class TopicConfigurationDeprecated {
 
 /// Specifies when an object transitions to a specified storage class. For more information about Amazon S3 lifecycle configuration rules, see Transitioning Objects Using Amazon S3 Lifecycle in the Amazon Simple Storage Service Developer Guide.
 class Transition {
-  Transition(
-    this.date,
-    this.days,
-    this.storageClass,
-  );
+  Transition(this.date, this.days, this.storageClass);
 
   Transition.fromXml(XmlElement? xml) {
-    date = DateTime.parse(getProp(xml, 'Date')!.text);
-    days = int.tryParse(getProp(xml, 'Days')!.text);
+    date = DateTime.tryParse(getProp(xml, 'Date')?.text ?? '');
+    days = int.tryParse(getProp(xml, 'Days')?.text ?? '');
     storageClass = getProp(xml, 'StorageClass')?.text;
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('Transition', nest: () {
-      builder.element('Date', nest: date!.toIso8601String());
-      builder.element('Days', nest: days.toString());
-      builder.element('StorageClass', nest: storageClass);
-    });
+    builder.element(
+      'Transition',
+      nest: () {
+        if (date != null) {
+          builder.element('Date', nest: date!.toIso8601String());
+        }
+
+        if (days != null) {
+          builder.element('Days', nest: days.toString());
+        }
+
+        if (storageClass != null) {
+          builder.element('StorageClass', nest: storageClass);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -3999,22 +5419,27 @@ class Transition {
 
 /// Describes the versioning state of an Amazon S3 bucket. For more information, see PUT Bucket versioning in the Amazon Simple Storage Service API Reference.
 class VersioningConfiguration {
-  VersioningConfiguration(
-    this.mFADelete,
-    this.status,
-  );
+  VersioningConfiguration(this.mFADelete, this.status);
 
-  VersioningConfiguration.fromXml(XmlElement xml) {
+  VersioningConfiguration.fromXml(XmlElement? xml) {
     mFADelete = getProp(xml, 'MFADelete')?.text;
     status = getProp(xml, 'Status')?.text;
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('VersioningConfiguration', nest: () {
-      builder.element('MFADelete', nest: mFADelete);
-      builder.element('Status', nest: status);
-    });
+    builder.element(
+      'VersioningConfiguration',
+      nest: () {
+        if (mFADelete != null) {
+          builder.element('MFADelete', nest: mFADelete);
+        }
+
+        if (status != null) {
+          builder.element('Status', nest: status);
+        }
+      },
+    );
     return builder.buildDocument();
   }
 
@@ -4034,23 +5459,51 @@ class WebsiteConfiguration {
     this.routingRules,
   );
 
-  WebsiteConfiguration.fromXml(XmlElement xml) {
+  WebsiteConfiguration.fromXml(XmlElement? xml) {
     errorDocument = ErrorDocument.fromXml(getProp(xml, 'ErrorDocument'));
     indexDocument = IndexDocument.fromXml(getProp(xml, 'IndexDocument'));
-    redirectAllRequestsTo =
-        RedirectAllRequestsTo.fromXml(getProp(xml, 'RedirectAllRequestsTo'));
+    redirectAllRequestsTo = RedirectAllRequestsTo.fromXml(
+      getProp(xml, 'RedirectAllRequestsTo'),
+    );
     routingRules = RoutingRule.fromXml(getProp(xml, 'RoutingRules'));
   }
 
   XmlNode toXml() {
     final builder = XmlBuilder();
-    builder.element('WebsiteConfiguration', nest: () {
-      builder.element('ErrorDocument', nest: errorDocument!.toXml());
-      builder.element('IndexDocument', nest: indexDocument!.toXml());
-      builder.element('RedirectAllRequestsTo',
-          nest: redirectAllRequestsTo!.toXml());
-      builder.element('RoutingRules', nest: routingRules!.toXml());
-    });
+    builder.element(
+      'WebsiteConfiguration',
+      nest: () {
+        if (errorDocument != null) {
+          builder.element(
+            'ErrorDocument',
+            nest: (errorDocument!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (indexDocument != null) {
+          builder.element(
+            'IndexDocument',
+            nest: (indexDocument!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+
+        if (redirectAllRequestsTo != null) {
+          builder.element(
+            'RedirectAllRequestsTo',
+            nest: (redirectAllRequestsTo!.toXml() as XmlDocument)
+                .rootElement
+                .children,
+          );
+        }
+
+        if (routingRules != null) {
+          builder.element(
+            'RoutingRules',
+            nest: (routingRules!.toXml() as XmlDocument).rootElement.children,
+          );
+        }
+      },
+    );
     return builder.buildDocument();
   }
 

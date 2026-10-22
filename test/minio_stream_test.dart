@@ -1,10 +1,11 @@
 import 'dart:typed_data';
 
-import 'package:test/test.dart';
+import 'package:test/test.dart' hide setUpAll, tearDownAll, test;
 
 import 'helpers.dart';
 
-void main() {
+Future<void> main() async {
+  await detectMinioServer();
   group('MinioByteStream', () {
     final bucketName = uniqueName();
     final objectName = 'content-length-test';

@@ -1,6 +1,6 @@
-import 'package:minio/models.dart';
-import 'package:minio/src/minio_client.dart';
-import 'package:minio/src/minio_helpers.dart';
+import 'package:zuraffa_minio/models.dart';
+import 'package:zuraffa_minio/src/minio_client.dart';
+import 'package:zuraffa_minio/src/minio_helpers.dart';
 
 class MinioError implements Exception {
   MinioError(this.message);
@@ -90,4 +90,10 @@ class MinioS3Error extends MinioError {
   Error? error;
 
   MinioResponse? response;
+}
+
+/// Thrown when a request is issued after the client's cancellation token
+/// has been cancelled (upstream issues #85, #45, #93).
+class MinioRequestCancelledError extends MinioError {
+  MinioRequestCancelledError(super.message);
 }

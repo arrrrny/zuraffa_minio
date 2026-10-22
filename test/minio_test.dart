@@ -1,15 +1,16 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:minio/io.dart';
-import 'package:minio/minio.dart';
-import 'package:minio/src/minio_models_generated.dart';
-import 'package:minio/src/utils.dart';
-import 'package:test/test.dart';
+import 'package:test/test.dart' hide setUpAll, tearDownAll, test;
+import 'package:zuraffa_minio/io.dart';
+import 'package:zuraffa_minio/minio.dart';
+import 'package:zuraffa_minio/src/minio_models_generated.dart';
+import 'package:zuraffa_minio/src/utils.dart';
 
 import 'helpers.dart';
 
-void main() {
+Future<void> main() async {
+  await detectMinioServer();
   testConstruct();
   testListBuckets();
   testBucketExists();
@@ -58,15 +59,9 @@ void testConstruct() {
   });
 
   test('Minio() throws when port is invalid', () {
-    expect(
-      () => getMinioClient(port: -1),
-      throwsA(isA<MinioError>()),
-    );
+    expect(() => getMinioClient(port: -1), throwsA(isA<MinioError>()));
 
-    expect(
-      () => getMinioClient(port: 65536),
-      throwsA(isA<MinioError>()),
-    );
+    expect(() => getMinioClient(port: 65536), throwsA(isA<MinioError>()));
   });
 }
 
@@ -156,11 +151,7 @@ void testBucketExists() {
       expect(
         () async => await minio.bucketExists(bucketName),
         throwsA(
-          isA<MinioError>().having(
-            (e) => e.message,
-            'message',
-            'Forbidden',
-          ),
+          isA<MinioError>().having((e) => e.message, 'message', 'Forbidden'),
         ),
       );
     });
@@ -170,11 +161,7 @@ void testBucketExists() {
       expect(
         () async => await minio.bucketExists(bucketName),
         throwsA(
-          isA<MinioError>().having(
-            (e) => e.message,
-            'message',
-            'Forbidden',
-          ),
+          isA<MinioError>().having((e) => e.message, 'message', 'Forbidden'),
         ),
       );
     });
@@ -200,6 +187,8 @@ void testFPutObject() {
     tearDownAll(() async {
       final minio = getMinioClient();
       await minio.removeObject(bucketName, objectName);
+      await minio.removeObject(bucketName, 'empty.txt');
+      await minio.removeBucket(bucketName);
       await tempDir.delete(recursive: true);
     });
 
@@ -215,12 +204,15 @@ void testFPutObject() {
       final prefix = 'x-amz-meta-';
       final userDefinedMetadataKey = '${prefix}user-defined-metadata-key-1';
       final userDefinedMetadataValue = 'custom value 1';
-      final metadata = {
-        userDefinedMetadataKey: userDefinedMetadataValue,
-      };
+      final metadata = {userDefinedMetadataKey: userDefinedMetadataValue};
 
       final minio = getMinioClient();
-      await minio.fPutObject(bucketName, objectName, testFile.path, metadata: metadata);
+      await minio.fPutObject(
+        bucketName,
+        objectName,
+        testFile.path,
+        metadata: metadata,
+      );
 
       final stat = await minio.statObject(bucketName, objectName);
       expect(
@@ -232,12 +224,15 @@ void testFPutObject() {
     test('fPutObject() adds user-defined object metadata w/o prefix', () async {
       final userDefinedMetadataKey = 'user-defined-metadata-key-2';
       final userDefinedMetadataValue = 'custom value 2';
-      final metadata = {
-        userDefinedMetadataKey: userDefinedMetadataValue,
-      };
+      final metadata = {userDefinedMetadataKey: userDefinedMetadataValue};
 
       final minio = getMinioClient();
-      await minio.fPutObject(bucketName, objectName, testFile.path, metadata: metadata);
+      await minio.fPutObject(
+        bucketName,
+        objectName,
+        testFile.path,
+        metadata: metadata,
+      );
 
       final stat = await minio.statObject(bucketName, objectName);
       expect(
@@ -281,6 +276,9 @@ void testSetObjectACL() {
     });
 
     tearDownAll(() async {
+      final minio = getMinioClient();
+      await minio.removeObject(bucketName, objectName);
+      await minio.removeBucket(bucketName);
       await tempDir.delete(recursive: true);
     });
 
@@ -312,6 +310,9 @@ void testGetObjectACL() {
     });
 
     tearDownAll(() async {
+      final minio = getMinioClient();
+      await minio.removeObject(bucketName, objectName);
+      await minio.removeBucket(bucketName);
       await tempDir.delete(recursive: true);
     });
 
@@ -352,7 +353,7 @@ void testGetObject() {
     });
 
     test('succeeds with utf8 object name', () async {
-      final stream = await minio.getObject(bucketName, object);
+      final stream = await minio.getObject(bucketName, objectUtf8);
       final buffer = BytesBuilder();
       await stream.forEach((data) => buffer.add(data));
       expect(stream.contentLength, equals(objectData.length));

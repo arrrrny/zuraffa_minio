@@ -1,9 +1,9 @@
 import 'package:convert/convert.dart';
 import 'package:crypto/crypto.dart';
-import 'package:minio/minio.dart';
-import 'package:minio/src/minio_client.dart';
-import 'package:minio/src/minio_helpers.dart';
-import 'package:minio/src/utils.dart';
+import 'package:zuraffa_minio/minio.dart';
+import 'package:zuraffa_minio/src/minio_client.dart';
+import 'package:zuraffa_minio/src/minio_helpers.dart';
+import 'package:zuraffa_minio/src/utils.dart';
 
 const signV4Algorithm = 'AWS4-HMAC-SHA256';
 
@@ -15,8 +15,11 @@ String signV4(
 ) {
   final signedHeaders = getSignedHeaders(request.headers.keys);
   final hashedPayload = request.headers['x-amz-content-sha256'];
-  final canonicalRequest =
-      getCanonicalRequest(request, signedHeaders, hashedPayload!);
+  final canonicalRequest = getCanonicalRequest(
+    request,
+    signedHeaders,
+    hashedPayload!,
+  );
   final stringToSign = getStringToSign(canonicalRequest, requestDate, region);
   final signingKey = getSigningKey(requestDate, region, minio.secretKey);
   final credential = getCredential(minio.accessKey, region, requestDate);
@@ -50,12 +53,14 @@ String getCanonicalRequest(
 
   final queryKeys = request.url.queryParameters.keys.toList();
   queryKeys.sort();
-  final requestQuery = queryKeys.map((key) {
-    final value = request.url.queryParameters[key];
-    final hasValue = value != null;
-    final valuePart = hasValue ? encodeCanonicalQuery(value) : '';
-    return '${encodeCanonicalQuery(key)}=$valuePart';
-  }).join('&');
+  final requestQuery = queryKeys
+      .map((key) {
+        final value = request.url.queryParameters[key];
+        final hasValue = value != null;
+        final valuePart = hasValue ? encodeCanonicalQuery(value) : '';
+        return '${encodeCanonicalQuery(key)}=$valuePart';
+      })
+      .join('&');
 
   final canonical = [];
   canonical.add(request.method.toUpperCase());
@@ -130,15 +135,15 @@ String presignSignatureV4(
 
   request = request.replace(
     url: request.url.replace(
-      queryParameters: {
-        ...request.url.queryParameters,
-        ...requestQuery,
-      },
+      queryParameters: {...request.url.queryParameters, ...requestQuery},
     ),
   );
 
-  final canonicalRequest =
-      getCanonicalRequest(request, signedHeaders, 'UNSIGNED-PAYLOAD');
+  final canonicalRequest = getCanonicalRequest(
+    request,
+    signedHeaders,
+    'UNSIGNED-PAYLOAD',
+  );
 
   final stringToSign = getStringToSign(canonicalRequest, requestDate, region);
   final signingKey = getSigningKey(requestDate, region, minio.secretKey);
