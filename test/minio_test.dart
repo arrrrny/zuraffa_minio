@@ -59,15 +59,9 @@ void testConstruct() {
   });
 
   test('Minio() throws when port is invalid', () {
-    expect(
-      () => getMinioClient(port: -1),
-      throwsA(isA<MinioError>()),
-    );
+    expect(() => getMinioClient(port: -1), throwsA(isA<MinioError>()));
 
-    expect(
-      () => getMinioClient(port: 65536),
-      throwsA(isA<MinioError>()),
-    );
+    expect(() => getMinioClient(port: 65536), throwsA(isA<MinioError>()));
   });
 }
 
@@ -157,11 +151,7 @@ void testBucketExists() {
       expect(
         () async => await minio.bucketExists(bucketName),
         throwsA(
-          isA<MinioError>().having(
-            (e) => e.message,
-            'message',
-            'Forbidden',
-          ),
+          isA<MinioError>().having((e) => e.message, 'message', 'Forbidden'),
         ),
       );
     });
@@ -171,11 +161,7 @@ void testBucketExists() {
       expect(
         () async => await minio.bucketExists(bucketName),
         throwsA(
-          isA<MinioError>().having(
-            (e) => e.message,
-            'message',
-            'Forbidden',
-          ),
+          isA<MinioError>().having((e) => e.message, 'message', 'Forbidden'),
         ),
       );
     });
@@ -216,12 +202,15 @@ void testFPutObject() {
       final prefix = 'x-amz-meta-';
       final userDefinedMetadataKey = '${prefix}user-defined-metadata-key-1';
       final userDefinedMetadataValue = 'custom value 1';
-      final metadata = {
-        userDefinedMetadataKey: userDefinedMetadataValue,
-      };
+      final metadata = {userDefinedMetadataKey: userDefinedMetadataValue};
 
       final minio = getMinioClient();
-      await minio.fPutObject(bucketName, objectName, testFile.path, metadata: metadata);
+      await minio.fPutObject(
+        bucketName,
+        objectName,
+        testFile.path,
+        metadata: metadata,
+      );
 
       final stat = await minio.statObject(bucketName, objectName);
       expect(
@@ -233,12 +222,15 @@ void testFPutObject() {
     test('fPutObject() adds user-defined object metadata w/o prefix', () async {
       final userDefinedMetadataKey = 'user-defined-metadata-key-2';
       final userDefinedMetadataValue = 'custom value 2';
-      final metadata = {
-        userDefinedMetadataKey: userDefinedMetadataValue,
-      };
+      final metadata = {userDefinedMetadataKey: userDefinedMetadataValue};
 
       final minio = getMinioClient();
-      await minio.fPutObject(bucketName, objectName, testFile.path, metadata: metadata);
+      await minio.fPutObject(
+        bucketName,
+        objectName,
+        testFile.path,
+        metadata: metadata,
+      );
 
       final stat = await minio.statObject(bucketName, objectName);
       expect(

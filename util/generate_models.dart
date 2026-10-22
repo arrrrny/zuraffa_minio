@@ -9,7 +9,8 @@ void main() async {
   // print(await getModel(urls.first));
   final models = await Future.wait(urls.map(getModel));
 
-  final result = '''
+  final result =
+      '''
 import 'package:xml/xml.dart';
 
 XmlElement getProp(XmlElement xml, String name) {
@@ -177,8 +178,10 @@ String toCamelCase(String name) {
 
 FieldSpec parseField(String name, Element dd) {
   final source = dd.text;
-  final description =
-      dd.querySelector('p')!.text.replaceAll(RegExp(r'\s+'), ' ');
+  final description = dd
+      .querySelector('p')!
+      .text
+      .replaceAll(RegExp(r'\s+'), ' ');
   final isRequired = dd.text.contains('Required: Yes');
   final type = parseType(source);
 

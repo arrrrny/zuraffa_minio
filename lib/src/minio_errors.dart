@@ -91,3 +91,9 @@ class MinioS3Error extends MinioError {
 
   MinioResponse? response;
 }
+
+/// Thrown when a request is issued after the client's cancellation token
+/// has been cancelled (upstream issues #85, #45, #93).
+class MinioRequestCancelledError extends MinioError {
+  MinioRequestCancelledError(super.message);
+}

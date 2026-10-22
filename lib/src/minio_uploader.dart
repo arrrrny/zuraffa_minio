@@ -20,8 +20,9 @@ class MinioUploader implements StreamConsumer<Uint8List> {
     this.object,
     this.partSize,
     this.metadata,
-    this.onProgress,
-  );
+    this.onProgress, {
+    this.maxParallelUploads = 1,
+  });
 
   final Minio minio;
   final MinioClient client;
@@ -30,6 +31,13 @@ class MinioUploader implements StreamConsumer<Uint8List> {
   final int partSize;
   final Map<String, String> metadata;
   final void Function(int)? onProgress;
+
+  /// How many parts may be uploaded at the same time.
+  ///
+  /// The default of 1 keeps the sequential behaviour of the upstream client.
+  /// A higher value uploads the parts of a multipart upload concurrently,
+  /// which is what upstream issue #98 asked for.
+  final int maxParallelUploads;
 
   var _partNumber = 1;
 
@@ -45,8 +53,17 @@ class MinioUploader implements StreamConsumer<Uint8List> {
   // The number of bytes uploaded of the current part.
   int? bytesUploaded;
 
+  // The number of bytes uploaded so far by the parts that are still in
+  // flight. Only more than zero when the parts are uploaded in parallel.
+  int _inflightBytes = 0;
+
   @override
   Future addStream(Stream<Uint8List> stream) async {
+    if (maxParallelUploads > 1) {
+      await _addStreamParallel(stream);
+      return;
+    }
+
     await for (var chunk in stream) {
       List<int>? md5digest;
       final headers = <String, String>{};
@@ -91,15 +108,89 @@ class MinioUploader implements StreamConsumer<Uint8List> {
     }
   }
 
+  /// Uploads the parts of a multipart upload concurrently.
+  ///
+  /// At most [maxParallelUploads] requests are in flight at the same time.
+  /// The parts are completed in the order the server needs them, whatever
+  /// order they finish in.
+  Future<void> _addStreamParallel(Stream<Uint8List> stream) async {
+    final inFlight = <Future<void>>[];
+
+    await for (var chunk in stream) {
+      if (_partNumber == 1 && chunk.length < partSize) {
+        // The object fits in a single request, so there is nothing to
+        // parallelize.
+        _etag = await _uploadChunk(chunk, getHeaders(chunk), null);
+        return;
+      }
+
+      if (_uploadId == null) {
+        await _initMultipartUpload();
+      }
+
+      final partNumber = _partNumber++;
+
+      if (_oldParts != null) {
+        final oldPart = _oldParts![partNumber];
+        if (oldPart != null) {
+          final md5digest = md5.convert(chunk).bytes;
+          if (hex.encode(md5digest) == oldPart.eTag) {
+            final part = CompletedPart(oldPart.eTag, partNumber);
+            _parts[part] = oldPart.size!;
+            continue;
+          }
+        }
+      }
+
+      final queries = <String, String?>{
+        'partNumber': '$partNumber',
+        'uploadId': _uploadId,
+      };
+
+      final future = _uploadPart(chunk, partNumber, queries);
+      inFlight.add(future);
+
+      if (inFlight.length >= maxParallelUploads) {
+        // Keep the number of in-flight requests bounded. The oldest one is
+        // awaited first, so a failure surfaces in the order the parts were
+        // started.
+        await inFlight.removeAt(0);
+      }
+    }
+
+    await Future.wait(inFlight);
+  }
+
+  Future<void> _uploadPart(
+    Uint8List chunk,
+    int partNumber,
+    Map<String, String?> queries,
+  ) async {
+    var uploaded = 0;
+
+    final etag = await _uploadChunk(chunk, getHeaders(chunk), queries, (bytes) {
+      _inflightBytes += bytes - uploaded;
+      uploaded = bytes;
+      _reportUploadProgress();
+    });
+
+    _inflightBytes -= uploaded;
+
+    final part = CompletedPart(etag, partNumber);
+    _parts[part] = chunk.length;
+    _reportUploadProgress();
+  }
+
   @override
   Future<String?> close() async {
     if (_uploadId == null) return _etag;
-    return minio.completeMultipartUpload(
-      bucket,
-      object,
-      _uploadId!,
-      _parts.keys.toList(),
-    );
+
+    // The parts are completed in the order the server expects them, which is
+    // the order of their part numbers and not the order they finished in.
+    final parts = _parts.keys.toList()
+      ..sort((a, b) => (a.partNumber ?? 0).compareTo(b.partNumber ?? 0));
+
+    return minio.completeMultipartUpload(bucket, object, _uploadId!, parts);
   }
 
   Map<String, String> getHeaders(List<int> chunk) {
@@ -116,8 +207,9 @@ class MinioUploader implements StreamConsumer<Uint8List> {
   Future<String?> _uploadChunk(
     Uint8List chunk,
     Map<String, String> headers,
-    Map<String, String?>? queries,
-  ) async {
+    Map<String, String?>? queries, [
+    void Function(int)? onProgress,
+  ]) async {
     final resp = await client.request(
       method: 'PUT',
       headers: headers,
@@ -125,7 +217,7 @@ class MinioUploader implements StreamConsumer<Uint8List> {
       bucket: bucket,
       object: object,
       payload: chunk,
-      onProgress: _updateProgress,
+      onProgress: onProgress ?? _updateProgress,
     );
 
     validate(resp);
@@ -143,8 +235,11 @@ class MinioUploader implements StreamConsumer<Uint8List> {
     // uploadId = await minio.findUploadId(bucket, object);
 
     if (_uploadId == null) {
-      _uploadId =
-          await minio.initiateNewMultipartUpload(bucket, object, metadata);
+      _uploadId = await minio.initiateNewMultipartUpload(
+        bucket,
+        object,
+        metadata,
+      );
       return;
     }
 
@@ -157,20 +252,22 @@ class MinioUploader implements StreamConsumer<Uint8List> {
 
   void _updateProgress(int bytesUploaded) {
     this.bytesUploaded = bytesUploaded;
+    _inflightBytes = bytesUploaded;
     _reportUploadProgress();
   }
 
   void _reportUploadProgress() {
-    if (onProgress == null || bytesUploaded == null) {
+    if (onProgress == null) {
       return;
     }
 
-    var totalBytesUploaded = bytesUploaded!;
+    var totalBytesUploaded = _inflightBytes;
 
     for (var part in _parts.keys) {
       totalBytesUploaded += _parts[part]!;
     }
 
+    bytesUploaded = totalBytesUploaded;
     onProgress!(totalBytesUploaded);
   }
 }

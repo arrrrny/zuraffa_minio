@@ -1,180 +1,317 @@
 <p align="center">
-  <h1 align="center">MinIO Dart</h1>
+  <h1 align="center">zuraffa_minio</h1>
 </p>
 
-This is the _unofficial_ MinIO Dart Client SDK that provides simple APIs to access any Amazon S3 compatible object storage server.
+A maintained fork of the [`minio`](https://pub.dev/packages/minio) package — the
+pure Dart client for MinIO and Amazon S3 compatible object storage.
 
 <p align="center">
-  <a href="https://github.com/xtyxtyx/minio-dart/actions/workflows/test.yml">
-    <img src="https://github.com/xtyxtyx/minio-dart/workflows/test/badge.svg">
+  <a href="https://github.com/arrrrny/zuraffa_minio/actions/workflows/test.yml">
+    <img src="https://github.com/arrrrny/zuraffa_minio/workflows/test/badge.svg">
   </a>
-  <a href="https://pub.dev/packages/minio">
-    <img src="https://img.shields.io/pub/v/minio">
-  </a>
-  <a href="https://ko-fi.com/F1F61K6BL">
-    <img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-F16061?style=flat&logo=buy-me-a-coffee&logoColor=white&labelColor=555555">
+  <a href="https://pub.dev/packages/zuraffa_minio">
+    <img src="https://img.shields.io/pub/v/zuraffa_minio">
   </a>
 </p>
 
-## API
+## Why a fork?
 
-| Bucket operations       | Object operations        | Presigned operations  | Bucket Policy & Notification operations |
-| ----------------------- | ------------------------ | --------------------- | --------------------------------------- |
-| [makeBucket]            | [getObject]              | [presignedUrl]        | [getBucketNotification]                 |
-| [listBuckets]           | [getPartialObject]       | [presignedGetObject]  | [setBucketNotification]                 |
-| [bucketExists]          | [fGetObject]             | [presignedPutObject]  | [removeAllBucketNotification]           |
-| [removeBucket]          | [putObject]              | [presignedPostPolicy] | [listenBucketNotification]              |
-| [listObjects]           | [fPutObject]             |                       | [getBucketPolicy]                       |
-| [listObjectsV2]         | [copyObject]             |                       | [setBucketPolicy]                       |
-| [listIncompleteUploads] | [statObject]             |                       |                                         |
-| [listAllObjects]        | [removeObject]           |                       |                                         |
-| [listAllObjectsV2]      | [removeObjects]          |                       |                                         |
-|                         | [removeIncompleteUpload] |                       |                                         |
+The upstream `minio` package has been unmaintained since August 2025. Its
+issue tracker grew to 36 open issues, most of them unanswered, and its test
+suite pointed at a public demo server that no longer exists — so the suite was
+red for everyone, not just for the maintainer.
+
+`zuraffa_minio` keeps the API of the original package **unchanged**, so
+migrating is an import swap:
+
+```dart
+// before
+import 'package:minio/minio.dart';
+// after
+import 'package:zuraffa_minio/minio.dart';
+// or, the default library, which is web safe:
+import 'package:zuraffa_minio/zuraffa_minio.dart';
+```
+
+Nothing else in your code has to change: the class is still `Minio`, the
+methods keep their names and their parameters, and the models keep their
+fields.
+
+What the fork adds on top:
+
+| | |
+|---|---|
+| **Dependencies** | `xml` 7 (upstream was pinned to 6.4.2), and every other pin moved to its current release |
+| **Tests** | A hermetic suite that runs against a real MinIO server in CI — the upstream suite could not run at all |
+| **Bug fixes** | Six reported bugs fixed, plus four more found on the way (see [What was fixed](#what-was-fixed)) |
+| **Features** | The feature requests from the issue tracker: cancellation, credential renewal, presigned URL overrides, progress callbacks, parallel transfer, `objectUrl`, `removeObjectsByPrefix` |
 
 ## Usage
 
-### Initialize MinIO Client
+### Initialize the client
 
-**MinIO**
+**A local MinIO server**
 
 ```dart
 final minio = Minio(
-  endPoint: 'play.min.io',
-  accessKey: 'Q3AM3UQ867SPQQA43P2F',
-  secretKey: 'zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG',
+  endPoint: '127.0.0.1',
+  port: 9000,
+  accessKey: 'minioadmin',
+  secretKey: 'minioadmin',
+  useSSL: false,
 );
 ```
 
-**AWS S3**
+**Amazon S3**
 
 ```dart
 final minio = Minio(
   endPoint: 's3.amazonaws.com',
   accessKey: 'YOUR-ACCESSKEYID',
   secretKey: 'YOUR-SECRETACCESSKEY',
+  region: 'eu-central-1',
 );
 ```
 
-**Filebase**
+### Upload and download
 
 ```dart
-final minio = Minio(
-  endPoint: 's3.filebase.com',
-  accessKey: 'YOUR-ACCESSKEYID',
-  secretKey: 'YOUR-SECRETACCESSKEY',
+import 'dart:typed_data';
+
+import 'package:zuraffa_minio/minio.dart';
+
+Future<void> main() async {
+  final minio = Minio(
+    endPoint: '127.0.0.1',
+    port: 9000,
+    accessKey: 'minioadmin',
+    secretKey: 'minioadmin',
+    useSSL: false,
+  );
+
+  final bytes = Uint8List.fromList('hello world'.codeUnits);
+
+  final etag = await minio.putObject(
+    'my-bucket',
+    'greeting.txt',
+    Stream<Uint8List>.value(bytes),
+    size: bytes.length,
+    onProgress: (written) => print('uploaded $written bytes'),
+  );
+  print('etag: $etag');
+
+  final data = await minio.getObject('my-bucket', 'greeting.txt');
+  final content = await data.read().then((bytes) => String.fromCharCodes(bytes));
+  print(content);
+
+  minio.close();
+}
+```
+
+### Files
+
+`package:zuraffa_minio/io.dart` adds the `dart:io` helpers. It is a separate
+library on purpose: the default library stays web safe.
+
+```dart
+import 'package:zuraffa_minio/io.dart';
+
+await minio.fPutObject('my-bucket', 'picture.png', '/tmp/picture.png');
+await minio.fGetObject('my-bucket', 'picture.png', '/tmp/picture-copy.png');
+```
+
+### Presigned URLs
+
+```dart
+final url = await minio.presignedGetObject(
+  'my-bucket',
+  'greeting.txt',
+  expires: const Duration(hours: 1),
+);
+```
+
+When the server the client talks to is not the host the browser reaches — a
+proxy, a CDN, an internal and an external address — the presigned URL can be
+generated for the public host while the client keeps talking to the internal
+one:
+
+```dart
+final url = await minio.presignedUrl(
+  'GET',
+  'my-bucket',
+  'greeting.txt',
+  expires: const Duration(hours: 1),
+  host: 'objects.example.com',
+  port: 443,
   useSSL: true,
 );
 ```
 
-**File upload**
+### Temporary credentials
+
+STS credentials expire. Instead of recreating the client, hand it a provider
+that returns fresh credentials when they are needed:
 
 ```dart
-import 'package:minio/io.dart';
-import 'package:minio/minio.dart';
-
-void main() async {
-  final minio = Minio(
-    endPoint: 'play.min.io',
-    accessKey: 'Q3AM3UQ867SPQQA43P2F',
-    secretKey: 'zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG',
-  );
-
-  await minio.fPutObject('mybucket', 'myobject', 'path/to/file');
-}
+final minio = Minio(
+  endPoint: 's3.amazonaws.com',
+  accessKey: '',
+  secretKey: '',
+  credentialsProvider: () async {
+    final session = await assumeRoleWithWebIdentity();
+    return MinioCredentials(
+      accessKey: session.accessKey,
+      secretKey: session.secretKey,
+      sessionToken: session.sessionToken,
+    );
+  },
+);
 ```
 
-For complete example, see: [example]
-
-> To use `fPutObject()` and `fGetObject`, you have to `import 'package:minio/io.dart';`
-
-**Upload with progress**
+### Cancelling
 
 ```dart
-import 'package:minio/minio.dart';
+final token = MinioCancellationToken();
+final minio = Minio(
+  endPoint: '127.0.0.1',
+  port: 9000,
+  accessKey: 'minioadmin',
+  secretKey: 'minioadmin',
+  useSSL: false,
+  cancellationToken: token,
+);
 
-void main() async {
-  final minio = Minio(
-    endPoint: 'play.min.io',
-    accessKey: 'Q3AM3UQ867SPQQA43P2F',
-    secretKey: 'zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG',
-  );
-
-  await minio.putObject(
-    'mybucket',
-    'myobject',
-    Stream<Uint8List>.value(Uint8List(1024)),
-    onProgress: (bytes) => print('$bytes uploaded'),
-  );
-}
+final upload = minio.putObject('my-bucket', 'big.bin', data);
+token.cancel();     // aborts the request that is in flight
+await upload;       // throws MinioRequestCancelledError
 ```
 
-**Get object**
+`minio.close()` aborts everything that is running as well.
+
+### Your own HTTP client
+
+The client is injectable, which is the escape hatch for proxies, custom
+certificates and retry policies:
 
 ```dart
-import 'dart:io';
-import 'package:minio/minio.dart';
+import 'package:http/io_client.dart';
 
-void main() async {
-  final minio = Minio(
-    endPoint: 's3.amazonaws.com',
-    accessKey: 'YOUR-ACCESSKEYID',
-    secretKey: 'YOUR-SECRETACCESSKEY',
-  );
-
-  final stream = await minio.getObject('BUCKET-NAME', 'OBJECT-NAME');
-
-  // Get object length
-  print(stream.contentLength);
-
-  // Write object data stream to file
-  await stream.pipe(File('output.txt').openWrite());
-}
+final minio = Minio(
+  endPoint: 'example.com',
+  accessKey: '...',
+  secretKey: '...',
+  httpClient: IOClient(HttpClient()..badCertificateCallback = (_, __, ___) => true),
+);
 ```
 
-## Features and bugs
+`package:zuraffa_minio/io.dart` has a shortcut for the certificate case:
 
-Please file feature requests and bugs at the [issue tracker][tracker].
+```dart
+final minio = Minio(
+  endPoint: 'example.com',
+  accessKey: '...',
+  secretKey: '...',
+  httpClient: createTlsHttpClient(allowInvalidCertificates: true),
+);
+```
 
-Contributions to this repository are welcome.
+### Parallel transfers
+
+```dart
+// upload the parts of a multipart upload concurrently
+await minio.putObject(
+  'my-bucket',
+  'big.bin',
+  data,
+  size: data.length,
+  maxParallelUploads: 4,
+);
+
+// download the object as concurrent byte ranges
+final stream = await minio.getObject(
+  'my-bucket',
+  'big.bin',
+  parallelism: 8,
+  chunkSize: 4 << 20,
+);
+```
+
+## Regions
+
+The region decides two things: the AWS host the request goes to and the scope
+the request is signed with. The client keeps both in sync, and it asks the
+server for the region of a bucket when it does not know it yet.
+
+If the server rejects a request because the region is wrong, it answers with
+`AuthorizationHeaderMalformed` and names the region the bucket really lives
+in. The client then signs and addresses the request again with that region
+and remembers it for the bucket.
+
+## What was fixed
+
+Every fix has a regression test whose name carries the number of the upstream
+issue it reproduces.
+
+| Issue | What was wrong |
+|---|---|
+| [#6](https://github.com/xtyxtyx/minio-dart/issues/6) | The notification poller called `json.decode` on the XML payload MinIO sends |
+| [#24](https://github.com/xtyxtyx/minio-dart/issues/24) | A negative object size failed an `assert`, which only exists in debug builds |
+| [#38](https://github.com/xtyxtyx/minio-dart/issues/38) | An unknown region fell back to the global endpoint, which only accepts `us-east-1` signatures |
+| [#43](https://github.com/xtyxtyx/minio-dart/issues/43) | `getRequestUrl` read the region without a null check and threw "Unexpected null value" |
+| [#49](https://github.com/xtyxtyx/minio-dart/issues/49) | `listBuckets` cast the whitespace text nodes between the buckets to `XmlElement` |
+| [#108](https://github.com/xtyxtyx/minio-dart/issues/108) | `statObject` read `content-length` and `last-modified` with a bang operator |
+
+Four more bugs were found while writing those tests:
+
+- `listIncompleteUploads` sent the `uploads` parameter twice, which broke the
+  signature of every request it made.
+- `listParts` and `listIncompleteUploads` read the wrong XML elements and
+  therefore always reported an empty, untruncated page.
+- `listParts` cast the document node to `XmlElement`, which is a `TypeError`.
+- `listIncompleteUploads` failed as a whole when a single upload could not be
+  inspected any more.
+
+## Running the tests
+
+The suite needs an S3 compatible server. By default it talks to
+`127.0.0.1:9000` with the `minioadmin` credentials:
+
+```sh
+minio server /tmp/minio-data --address 127.0.0.1:9000
+dart test -j 2
+```
+
+Without a server the integration tests are skipped and the offline tests still
+run. The server can be pointed somewhere else:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MINIO_ENDPOINT` | `127.0.0.1` | The host of the server |
+| `MINIO_PORT` | `9000` | The port of the server |
+| `MINIO_USE_SSL` | `false` | Whether the server speaks TLS |
+| `MINIO_ACCESS_KEY` | `minioadmin` | The access key |
+| `MINIO_SECRET_KEY` | `minioadmin` | The secret key |
+| `MINIO_REGION` | `us-east-1` | The region to sign for |
+
+> MinIO's open source server is archived: the docker images are gone and
+> `dl.min.io` answers `410 Gone`. The CI workflow downloads the last release
+> that ships a binary and runs that.
+
+## API
+
+| Bucket operations | Object operations | Presigned operations | Bucket policy & notification |
+|---|---|---|---|
+| `makeBucket` | `getObject` | `presignedUrl` | `getBucketNotification` |
+| `listBuckets` | `getPartialObject` | `presignedGetObject` | `setBucketNotification` |
+| `bucketExists` | `putObject` | `presignedPutObject` | `removeAllBucketNotification` |
+| `removeBucket` | `statObject` | `presignedPostPolicy` | `listenBucketNotification` |
+| `listObjects` | `copyObject` | | `getBucketPolicy` |
+| `listObjectsV2` | `removeObject` | | `setBucketPolicy` |
+| `listIncompleteUploads` | `removeObjects` | | |
+| `listAllObjects` | `removeObjectsByPrefix` | | |
+| `listAllObjectsV2` | `objectUrl` | | |
 
 ## License
 
-[MIT](./LICENSE)
-
-[tracker]: https://github.com/xtyxtyx/minio-dart/issues
-[example]: https://pub.dev/packages/minio/example
-
-[makeBucket]: https://pub.dev/documentation/minio/latest/minio/Minio/makeBucket.html
-[listBuckets]: https://pub.dev/documentation/minio/latest/minio/Minio/listBuckets.html
-[bucketExists]: https://pub.dev/documentation/minio/latest/minio/Minio/bucketExists.html
-[removeBucket]: https://pub.dev/documentation/minio/latest/minio/Minio/removeBucket.html
-[listObjects]: https://pub.dev/documentation/minio/latest/minio/Minio/listObjects.html
-[listObjectsV2]: https://pub.dev/documentation/minio/latest/minio/Minio/listObjectsV2.html
-[listIncompleteUploads]: https://pub.dev/documentation/minio/latest/minio/Minio/listIncompleteUploads.html
-[listAllObjects]: https://pub.dev/documentation/minio/latest/minio/Minio/listAllObjects.html
-[listAllObjectsV2]: https://pub.dev/documentation/minio/latest/minio/Minio/listAllObjectsV2.html
-
-[getObject]: https://pub.dev/documentation/minio/latest/minio/Minio/getObject.html
-[getPartialObject]: https://pub.dev/documentation/minio/latest/minio/Minio/getPartialObject.html
-[putObject]: https://pub.dev/documentation/minio/latest/minio/Minio/putObject.html
-[copyObject]: https://pub.dev/documentation/minio/latest/minio/Minio/copyObject.html
-[statObject]: https://pub.dev/documentation/minio/latest/minio/Minio/statObject.html
-[removeObject]: https://pub.dev/documentation/minio/latest/minio/Minio/removeObject.html
-[removeObjects]: https://pub.dev/documentation/minio/latest/minio/Minio/removeObjects.html
-[removeIncompleteUpload]: https://pub.dev/documentation/minio/latest/minio/Minio/removeIncompleteUpload.html
-
-[fGetObject]: https://pub.dev/documentation/minio/latest/io/MinioX/fGetObject.html
-[fPutObject]: https://pub.dev/documentation/minio/latest/io/MinioX/fPutObject.html
-
-[presignedUrl]: https://pub.dev/documentation/minio/latest/minio/Minio/presignedUrl.html
-[presignedGetObject]: https://pub.dev/documentation/minio/latest/minio/Minio/presignedGetObject.html
-[presignedPutObject]: https://pub.dev/documentation/minio/latest/minio/Minio/presignedPutObject.html
-[presignedPostPolicy]: https://pub.dev/documentation/minio/latest/minio/Minio/presignedPostPolicy.html
-
-[getBucketNotification]: https://pub.dev/documentation/minio/latest/minio/Minio/getBucketNotification.html
-[setBucketNotification]: https://pub.dev/documentation/minio/latest/minio/Minio/setBucketNotification.html
-[removeAllBucketNotification]: https://pub.dev/documentation/minio/latest/minio/Minio/removeAllBucketNotification.html
-[listenBucketNotification]: https://pub.dev/documentation/minio/latest/minio/Minio/listenBucketNotification.html
-
-[getBucketPolicy]: https://pub.dev/documentation/minio/latest/minio/Minio/getBucketPolicy.html
-[setBucketPolicy]: https://pub.dev/documentation/minio/latest/minio/Minio/setBucketPolicy.html
+MIT — see [LICENSE](LICENSE). The original package is MIT licensed as well;
+the copyright of `xuty` is kept.

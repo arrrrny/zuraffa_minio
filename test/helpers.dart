@@ -35,7 +35,8 @@ class MinioTestServer {
 
   /// Whether the server speaks TLS.
   static final bool useSSL =
-      (Platform.environment['MINIO_USE_SSL'] ?? 'false').toLowerCase() == 'true';
+      (Platform.environment['MINIO_USE_SSL'] ?? 'false').toLowerCase() ==
+      'true';
 
   /// The access key to sign with.
   static final String accessKey =
@@ -74,17 +75,16 @@ Minio getMinioClient({
   String? sessionToken,
   String? region,
   bool enableTrace = false,
-}) =>
-    Minio(
-      endPoint: endpoint ?? MinioTestServer.endpoint,
-      port: identical(port, _unset) ? MinioTestServer.port : port as int?,
-      useSSL: useSSL ?? MinioTestServer.useSSL,
-      accessKey: accessKey ?? MinioTestServer.accessKey,
-      secretKey: secretKey ?? MinioTestServer.secretKey,
-      sessionToken: sessionToken ?? '',
-      region: region ?? MinioTestServer.region,
-      enableTrace: enableTrace,
-    );
+}) => Minio(
+  endPoint: endpoint ?? MinioTestServer.endpoint,
+  port: identical(port, _unset) ? MinioTestServer.port : port as int?,
+  useSSL: useSSL ?? MinioTestServer.useSSL,
+  accessKey: accessKey ?? MinioTestServer.accessKey,
+  secretKey: secretKey ?? MinioTestServer.secretKey,
+  sessionToken: sessionToken ?? '',
+  region: region ?? MinioTestServer.region,
+  enableTrace: enableTrace,
+);
 
 /// Generates a random name for a bucket or object.
 String uniqueName() {
@@ -109,9 +109,7 @@ bool get minioServerAvailable => _serverAvailable;
 /// tests need to know.
 Future<void> detectMinioServer() async {
   try {
-    await getMinioClient()
-        .listBuckets()
-        .timeout(const Duration(seconds: 15));
+    await getMinioClient().listBuckets().timeout(const Duration(seconds: 15));
     _serverAvailable = true;
   } catch (_) {
     _serverAvailable = false;

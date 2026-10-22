@@ -84,9 +84,7 @@ class MinioResponse extends BaseResponse {
     super.isRedirect,
     super.persistentConnection,
     super.reasonPhrase,
-  }) : super(
-          contentLength: bodyBytes.length,
-        );
+  }) : super(contentLength: bodyBytes.length);
 
   /// The bytes comprising the body of this response.
   final Uint8List bodyBytes;
@@ -133,6 +131,15 @@ class MinioClient {
     Map<String, String>? headers,
     void Function(int)? onProgress,
   }) async {
+    // A cancelled token stops the request before it is even signed: no
+    // credentials are resolved and nothing leaves the process
+    // (upstream issues #85, #45, #93).
+    minio.throwIfCancelled();
+
+    // Temporary credentials from a credentialsProvider must be fresh
+    // before they are read for signing (upstream issue #94).
+    await minio.resolveCredentials();
+
     if (bucket != null) {
       region ??= await minio.getBucketRegion(bucket);
     }
@@ -269,9 +276,21 @@ class MinioClient {
     String? resource,
     Map<String, dynamic>? queries,
     Map<String, String>? headers,
-    void Function(int)? onProgress,
-  ) {
-    final url = getRequestUrl(bucket, object, resource, queries, region: region);
+    void Function(int)? onProgress, {
+    String? host,
+    int? port,
+    bool? useSSL,
+  }) {
+    final url = getRequestUrl(
+      bucket,
+      object,
+      resource,
+      queries,
+      region: region,
+      host: host,
+      port: port,
+      useSSL: useSSL,
+    );
     final request = MinioRequest(method, url, onProgress: onProgress);
     request.headers['host'] = url.authority;
 
@@ -288,8 +307,18 @@ class MinioClient {
     String? resource,
     Map<String, dynamic>? queries, {
     String? region,
+    String? host,
+    int? port,
+    bool? useSSL,
   }) {
-    var host = minio.endPoint.toLowerCase();
+    // A caller may presign for a different public host, port or scheme than
+    // the client itself talks to — e.g. behind a proxy or CDN (upstream
+    // issue #101). The overrides flow all the way into the URL, and
+    // `getBaseRequest` derives the signed `host` header from that same URL,
+    // so signature can never disagree with the address.
+    final effectiveSSL = useSSL ?? minio.useSSL;
+    var hostName = (host ?? minio.endPoint).toLowerCase();
+    final effectivePort = port ?? minio.port;
     var path = '/';
 
     // The effective region is the one the signature will claim. It decides
@@ -301,18 +330,20 @@ class MinioClient {
     final effectiveRegion = region ?? minio.region ?? 'us-east-1';
 
     var pathStyle = minio.pathStyle ?? true;
-    if (isAmazonEndpoint(host)) {
-      if (isGlobalAmazonEndpoint(host)) {
-        host = getS3Endpoint(effectiveRegion);
+    if (isAmazonEndpoint(hostName)) {
+      if (isGlobalAmazonEndpoint(hostName)) {
+        hostName = getS3Endpoint(effectiveRegion);
       }
       // Virtual host style is the documented default for Amazon endpoints
       // ("pathStyle ... for non AWS endpoints"); upstream always fell back to
       // path style because it tested the already-regionalized host.
-      pathStyle = minio.pathStyle ?? !isVirtualHostStyle(host, minio.useSSL, bucket);
+      pathStyle =
+          minio.pathStyle ??
+          !isVirtualHostStyle(hostName, effectiveSSL, bucket);
     }
 
     if (!pathStyle) {
-      if (bucket != null) host = '$bucket.$host';
+      if (bucket != null) hostName = '$bucket.$hostName';
       if (object != null) path = '/$object';
     } else {
       if (bucket != null) path = '/$bucket';
@@ -329,9 +360,9 @@ class MinioClient {
     }
 
     return Uri(
-      scheme: minio.useSSL ? 'https' : 'http',
-      host: host,
-      port: minio.port,
+      scheme: effectiveSSL ? 'https' : 'http',
+      host: hostName,
+      port: effectivePort,
       pathSegments: path.split('/'),
       query: query.toString(),
     );

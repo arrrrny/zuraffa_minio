@@ -81,21 +81,28 @@ Future<void> main() async {
   });
 
   group('upstream issue #108 - statObject', () {
-    test('#108 statObject survives a response without content-length', () async {
-      final minio = _mockClient((request) async {
-        return http.Response('', 200, headers: {'etag': '"d41d8cd98f00b204"'});
-      });
+    test(
+      '#108 statObject survives a response without content-length',
+      () async {
+        final minio = _mockClient((request) async {
+          return http.Response(
+            '',
+            200,
+            headers: {'etag': '"d41d8cd98f00b204"'},
+          );
+        });
 
-      final stat = await minio.statObject(
-        'bucket',
-        'object',
-        retrieveAcls: false,
-      );
+        final stat = await minio.statObject(
+          'bucket',
+          'object',
+          retrieveAcls: false,
+        );
 
-      expect(stat.size, isNull);
-      expect(stat.lastModified, isNull);
-      expect(stat.etag, 'd41d8cd98f00b204');
-    });
+        expect(stat.size, isNull);
+        expect(stat.lastModified, isNull);
+        expect(stat.etag, 'd41d8cd98f00b204');
+      },
+    );
 
     test('#108 statObject still reports the size when it is present', () async {
       final minio = _mockClient((request) async {
@@ -125,16 +132,13 @@ Future<void> main() async {
     test(
       '#43 an Amazon endpoint without an explicit region does not throw',
       () async {
-        final minio = _mockClient(
-          (request) async {
-            return http.Response(
-              '<?xml version="1.0"?><ListAllMyBucketsResult><Buckets/>'
-              '</ListAllMyBucketsResult>',
-              200,
-            );
-          },
-          endPoint: 's3.amazonaws.com',
-        );
+        final minio = _mockClient((request) async {
+          return http.Response(
+            '<?xml version="1.0"?><ListAllMyBucketsResult><Buckets/>'
+            '</ListAllMyBucketsResult>',
+            200,
+          );
+        }, endPoint: 's3.amazonaws.com');
 
         // Upstream read `minio.region!` while building the request URL and
         // threw "Unexpected null value" for every request against an Amazon
@@ -165,50 +169,47 @@ Future<void> main() async {
   });
 
   group('upstream issue #38 - wrong region', () {
-    test(
-      '#38 a request signed for the wrong region is retried with the region '
-      'the server names',
-      () async {
-        final requests = <http.Request>[];
-        final minio = _mockClient(
-          (request) async {
-            requests.add(request);
-            if (requests.length == 1) {
-              return http.Response(
-                '<?xml version="1.0" encoding="UTF-8"?>'
-                '<Error><Code>AuthorizationHeaderMalformed</Code>'
-                '<Message>The authorization header is malformed; the region is '
-                "wrong; expecting 'us-east-1'.</Message>"
-                '<Region>us-east-1</Region></Error>',
-                400,
-              );
-            }
+    test('#38 a request signed for the wrong region is retried with the region '
+        'the server names', () async {
+      final requests = <http.Request>[];
+      final minio = _mockClient(
+        (request) async {
+          requests.add(request);
+          if (requests.length == 1) {
             return http.Response(
-              '<?xml version="1.0"?><ListAllMyBucketsResult><Buckets/>'
-              '</ListAllMyBucketsResult>',
-              200,
+              '<?xml version="1.0" encoding="UTF-8"?>'
+              '<Error><Code>AuthorizationHeaderMalformed</Code>'
+              '<Message>The authorization header is malformed; the region is '
+              "wrong; expecting 'us-east-1'.</Message>"
+              '<Region>us-east-1</Region></Error>',
+              400,
             );
-          },
-          endPoint: 's3.amazonaws.com',
-          region: 'ap-northeast-1',
-        );
+          }
+          return http.Response(
+            '<?xml version="1.0"?><ListAllMyBucketsResult><Buckets/>'
+            '</ListAllMyBucketsResult>',
+            200,
+          );
+        },
+        endPoint: 's3.amazonaws.com',
+        region: 'ap-northeast-1',
+      );
 
-        await minio.listBuckets();
+      await minio.listBuckets();
 
-        expect(requests, hasLength(2));
-        expect(
-          requests.first.headers['authorization'],
-          contains('/ap-northeast-1/'),
-          reason: 'the first attempt is signed for the configured region',
-        );
-        expect(
-          requests.last.headers['authorization'],
-          contains('/us-east-1/'),
-          reason: 'the retry is signed for the region the server asked for',
-        );
-        expect(requests.last.url.host, 's3.amazonaws.com');
-      },
-    );
+      expect(requests, hasLength(2));
+      expect(
+        requests.first.headers['authorization'],
+        contains('/ap-northeast-1/'),
+        reason: 'the first attempt is signed for the configured region',
+      );
+      expect(
+        requests.last.headers['authorization'],
+        contains('/us-east-1/'),
+        reason: 'the retry is signed for the region the server asked for',
+      );
+      expect(requests.last.url.host, 's3.amazonaws.com');
+    });
   });
 
   group('upstream issue #24 - object size', () {
@@ -304,9 +305,8 @@ Future<void> main() async {
 
   group('multipart listings', () {
     test('listParts parses the server response', () async {
-      final minio = _mockClient(
-        (request) async {
-          return http.Response('''
+      final minio = _mockClient((request) async {
+        return http.Response('''
 <?xml version="1.0" encoding="UTF-8"?>
 <ListPartsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
   <Bucket>bucket</Bucket>
@@ -326,11 +326,11 @@ Future<void> main() async {
     <Size>11</Size>
   </Part>
 </ListPartsResult>''', 200);
-        },
-        region: 'us-east-1',
-      );
+      }, region: 'us-east-1');
 
-      final parts = await minio.listParts('bucket', 'object', 'upload-id').toList();
+      final parts = await minio
+          .listParts('bucket', 'object', 'upload-id')
+          .toList();
 
       expect(parts, hasLength(1));
       expect(parts.first.partNumber, 1);
@@ -338,10 +338,9 @@ Future<void> main() async {
     });
 
     test('listIncompleteUploads parses the server response', () async {
-      final minio = _mockClient(
-        (request) async {
-          if (request.url.query.contains('uploadId')) {
-            return http.Response('''
+      final minio = _mockClient((request) async {
+        if (request.url.query.contains('uploadId')) {
+          return http.Response('''
 <?xml version="1.0" encoding="UTF-8"?>
 <ListPartsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
   <Bucket>bucket</Bucket>
@@ -350,8 +349,8 @@ Future<void> main() async {
   <NextPartNumberMarker>0</NextPartNumberMarker>
   <IsTruncated>false</IsTruncated>
 </ListPartsResult>''', 200);
-          }
-          return http.Response('''
+        }
+        return http.Response('''
 <?xml version="1.0" encoding="UTF-8"?>
 <ListMultipartUploadsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
   <Bucket>bucket</Bucket>
@@ -370,9 +369,7 @@ Future<void> main() async {
     <Initiated>2024-01-01T00:00:00.000Z</Initiated>
   </Upload>
 </ListMultipartUploadsResult>''', 200);
-        },
-        region: 'us-east-1',
-      );
+      }, region: 'us-east-1');
 
       final uploads = await minio.listIncompleteUploads('bucket', '').toList();
 

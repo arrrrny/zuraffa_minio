@@ -6,10 +6,7 @@ import 'package:zuraffa_minio/src/minio_models_generated.dart';
 import 'package:zuraffa_minio/src/utils.dart';
 
 class ListObjectsResult {
-  ListObjectsResult({
-    required this.objects,
-    required this.prefixes,
-  });
+  ListObjectsResult({required this.objects, required this.prefixes});
 
   /// Metadata about each object returned.
   final List<Object> objects;
@@ -38,9 +35,7 @@ class ListObjectsV2Output {
 }
 
 class CompleteMultipartUpload {
-  CompleteMultipartUpload(
-    this.parts,
-  );
+  CompleteMultipartUpload(this.parts);
 
   XmlNode toXml() {
     final builder = XmlBuilder();
@@ -92,10 +87,7 @@ class ListPartsOutput {
 }
 
 class IncompleteUpload {
-  IncompleteUpload({
-    this.upload,
-    this.size,
-  });
+  IncompleteUpload({this.upload, this.size});
 
   final MultipartUpload? upload;
   final int? size;
@@ -142,9 +134,7 @@ class StatObjectResult {
 
 /// Build PostPolicy object that can be signed by presignedPostPolicy
 class PostPolicy {
-  final policy = <String, dynamic>{
-    'conditions': [],
-  };
+  final policy = <String, dynamic>{'conditions': []};
 
   final formData = <String, String>{};
 

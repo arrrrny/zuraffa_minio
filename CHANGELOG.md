@@ -1,3 +1,85 @@
+# 0.2.0
+
+The first release of `zuraffa_minio`, the maintained fork of the `minio`
+package. The API of the original package is unchanged, so migrating is an
+import swap:
+
+```dart
+// before
+import 'package:minio/minio.dart';
+// after
+import 'package:zuraffa_minio/minio.dart';
+```
+
+## Dependencies
+
+- `xml` from 6.4.2 to 7.x, and every other pin moved to its current release
+  (`http` 1.6, `crypto` 3.0.7, `convert` 3.1.2, `intl` 0.20.2, `meta` 1.16,
+  `mime` 2.0.0, `path` 1.9.1)
+
+## Fixed
+
+- #6 the notification poller called `json.decode` on the XML payload MinIO
+  sends; it understands the XML and the JSON format now, and it no longer
+  delivers every event twice
+- #24 a negative object size failed an `assert`, which only exists in debug
+  builds; it is an `ArgumentError` now
+- #38 an unknown region fell back to the global endpoint, which only accepts
+  `us-east-1` signatures ("the region is wrong; expecting 'us-east-1'"); the
+  regional host is kept, and a request the server rejects with
+  `AuthorizationHeaderMalformed` is signed and addressed again with the
+  region the server names
+- #43 `getRequestUrl` read the region without a null check and threw
+  "Unexpected null value" for every request against an Amazon endpoint
+  without a region
+- #49 `listBuckets` cast the whitespace text nodes between the buckets to
+  `XmlElement`
+- #108 `statObject` read `content-length` and `last-modified` with a bang
+  operator and crashed when a server left one of them out
+- `listIncompleteUploads` sent the `uploads` parameter twice, which broke the
+  signature of every request it made
+- `listParts` and `listIncompleteUploads` read the wrong XML elements and
+  therefore always reported an empty, untruncated page
+- `listParts` cast the document node to `XmlElement`, which is a `TypeError`
+- `listIncompleteUploads` failed as a whole when a single upload could not be
+  inspected any more
+
+## Added
+
+- #85, #45, #93 a `MinioCancellationToken` that aborts the requests in flight,
+  and `Minio.close()` that aborts everything that is running
+- #80, #93 the `http.Client` can be injected, and `package:zuraffa_minio/io.dart`
+  has `createTlsHttpClient` for a custom `SecurityContext` or for accepting
+  invalid certificates
+- #101 `presignedUrl` and `presignedPostPolicy` accept `host`, `port` and
+  `useSSL` overrides, so a presigned URL can be generated for a public host
+  while the client talks to an internal one
+- #94 a `credentialsProvider` callback, so temporary (STS) credentials can be
+  renewed while the application runs
+- #4, #20 `getObject` and `getPartialObject` report the download progress
+  through `onProgress`
+- #12 `objectUrl` returns the plain URL of an object
+- #99 `removeObjectsByPrefix` removes every object under a prefix
+- #112 `getObject` can fetch the object as concurrent byte ranges
+- #98 `putObject` can upload the parts of a multipart upload concurrently
+
+## Testing
+
+- the test suite no longer depends on the public demo server (which is gone);
+  it talks to a local MinIO server and skips the integration tests with a
+  reason when no server answers
+- the CI workflow starts a MinIO server and runs the whole suite against it
+
+## Note
+
+The `zuraffa_minio` 0.1.x releases were a from-scratch rewrite with a
+different API and a dependency on the `zuraffa` framework. They are withdrawn:
+this release is the drop-in fork of the upstream package, which is what the
+issue reports are written against. The 0.1.x implementation is kept on the
+`archive/0.1.x-rewrite` branch.
+
+---
+
 # 3.5.8
 
 - Fix path encoding for space and plus characters in object names to prevent signature mismatch errors #7

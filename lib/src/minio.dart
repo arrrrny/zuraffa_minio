@@ -4,35 +4,76 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:xml/xml.dart' as xml;
 import 'package:xml/xml.dart' show XmlElement;
+import 'package:zuraffa_minio/src/minio_cancellation.dart';
 import 'package:zuraffa_minio/src/minio_client.dart';
 import 'package:zuraffa_minio/src/minio_errors.dart';
 import 'package:zuraffa_minio/src/minio_helpers.dart';
 import 'package:zuraffa_minio/src/minio_models.dart';
 import 'package:zuraffa_minio/src/minio_models_generated.dart';
+import 'package:zuraffa_minio/src/minio_parallel.dart';
 import 'package:zuraffa_minio/src/minio_poller.dart';
 import 'package:zuraffa_minio/src/minio_sign.dart';
 import 'package:zuraffa_minio/src/minio_stream.dart';
 import 'package:zuraffa_minio/src/minio_uploader.dart';
 import 'package:zuraffa_minio/src/utils.dart';
 
+/// A set of credentials used to sign the requests of a [Minio] client.
+///
+/// This answers upstream issue #94 ("Support temporary credentials / session
+/// token renewal") of the `minio` package: short-lived credentials of a
+/// security token service can be handed to the client through a
+/// `credentialsProvider` instead of being fixed at construction time.
+class MinioCredentials {
+  /// Creates a credential set.
+  MinioCredentials({
+    required this.accessKey,
+    required this.secretKey,
+    this.sessionToken,
+  });
+
+  /// The access key identifying the account.
+  final String accessKey;
+
+  /// The secret key of the account.
+  final String secretKey;
+
+  /// The session token accompanying the credentials, if any.
+  final String? sessionToken;
+}
+
+/// Resolves the credentials a [Minio] client signs with.
+///
+/// Called by the client whenever it needs credentials that may have expired;
+/// see [MinioCredentials] and upstream issue #94.
+typedef MinioCredentialsProvider = Future<MinioCredentials> Function();
+
 class Minio {
   /// Initializes a new client object.
   Minio({
     required this.endPoint,
-    required this.accessKey,
-    required this.secretKey,
+    required String accessKey,
+    required String secretKey,
     int? port,
     this.useSSL = true,
-    this.sessionToken,
+    String? sessionToken,
     this.region,
     this.pathStyle,
     this.enableTrace = false,
     http.Client? httpClient,
+    this.credentialsProvider,
+    this.credentialsTtl = const Duration(minutes: 5),
+    this.cancellationToken,
   }) : port = port ?? implyPort(useSSL),
-       _httpClient = httpClient {
+       _httpClient = httpClient,
+       _staticCredentials = MinioCredentials(
+         accessKey: accessKey,
+         secretKey: secretKey,
+         sessionToken: sessionToken,
+       ) {
     if (!isValidEndpoint(endPoint)) {
       throw MinioInvalidEndpointError(
         'End point $endPoint is not a valid domain or ip address',
@@ -40,12 +81,14 @@ class Minio {
     }
 
     if (!isValidPort(this.port)) {
-      throw MinioInvalidPortError(
-        'Invalid port number ${this.port}',
-      );
+      throw MinioInvalidPortError('Invalid port number ${this.port}');
     }
 
     _client = MinioClient(this);
+
+    // When the token is cancelled the HTTP client is closed, which aborts
+    // every request that is in flight (upstream issues #85, #45, #93).
+    unawaited(cancellationToken?.whenCancelled.then((_) => close()));
   }
 
   /// default part size for multipart uploads.
@@ -71,13 +114,112 @@ class Minio {
   final bool useSSL;
 
   /// accessKey is like user-id that uniquely identifies your account.
-  final String accessKey;
+  ///
+  /// When a [credentialsProvider] is configured (upstream issue #94), this
+  /// is the access key of the credentials the provider last resolved;
+  /// otherwise it is the value passed to the constructor.
+  String get accessKey {
+    final resolved = _resolvedCredentials;
+    if (credentialsProvider != null && resolved != null) {
+      return resolved.accessKey;
+    }
+    return _staticCredentials.accessKey;
+  }
 
   /// secretKey is the password to your account.
-  final String secretKey;
+  ///
+  /// When a [credentialsProvider] is configured (upstream issue #94), this
+  /// is the secret key of the credentials the provider last resolved;
+  /// otherwise it is the value passed to the constructor.
+  String get secretKey {
+    final resolved = _resolvedCredentials;
+    if (credentialsProvider != null && resolved != null) {
+      return resolved.secretKey;
+    }
+    return _staticCredentials.secretKey;
+  }
 
   /// Set this value to provide x-amz-security-token (AWS S3 specific). (Optional)
-  final String? sessionToken;
+  ///
+  /// When a [credentialsProvider] is configured (upstream issue #94), this
+  /// is the session token of the credentials the provider last resolved;
+  /// otherwise it is the value passed to the constructor.
+  String? get sessionToken {
+    final resolved = _resolvedCredentials;
+    if (credentialsProvider != null && resolved != null) {
+      return resolved.sessionToken;
+    }
+    return _staticCredentials.sessionToken;
+  }
+
+  /// Resolves short-lived credentials before every signature, instead of
+  /// using the constructor's static keys. (Optional)
+  ///
+  /// This answers upstream issue #94 ("Support temporary credentials /
+  /// session token renewal") of the `minio` package.
+  final MinioCredentialsProvider? credentialsProvider;
+
+  /// How long credentials from [credentialsProvider] stay fresh.
+  ///
+  /// Older credentials are resolved again before the next request is
+  /// signed. Defaults to five minutes. (upstream issue #94)
+  final Duration credentialsTtl;
+
+  /// Cancels every in-flight and future request of this client. (Optional)
+  ///
+  /// This answers upstream issues #85, #45 and #93 ("How to cancel a
+  /// request?") of the `minio` package.
+  final MinioCancellationToken? cancellationToken;
+
+  final MinioCredentials _staticCredentials;
+  MinioCredentials? _resolvedCredentials;
+  DateTime? _resolvedAt;
+
+  /// The credentials the next request will be signed with.
+  ///
+  /// When a [credentialsProvider] is configured and its last result is
+  /// older than [credentialsTtl], the provider is consulted again. The
+  /// resolution is awaited before every signature is computed, so the
+  /// credentials that end up in the signature and in the
+  /// `x-amz-security-token` header are always the resolved ones.
+  /// (upstream issue #94)
+  Future<MinioCredentials> resolveCredentials() async {
+    final provider = credentialsProvider;
+    if (provider == null) return _staticCredentials;
+
+    final resolved = _resolvedCredentials;
+    final resolvedAt = _resolvedAt;
+    if (resolved != null &&
+        resolvedAt != null &&
+        DateTime.now().difference(resolvedAt) < credentialsTtl) {
+      return resolved;
+    }
+
+    final credentials = await provider();
+    _resolvedCredentials = credentials;
+    _resolvedAt = DateTime.now();
+    return credentials;
+  }
+
+  /// Forces the [credentialsProvider] to be consulted again, discarding the
+  /// cached credentials. (upstream issue #94)
+  Future<void> refreshCredentials() async {
+    if (credentialsProvider == null) return;
+    _resolvedCredentials = null;
+    _resolvedAt = null;
+    await resolveCredentials();
+  }
+
+  /// Throws [MinioRequestCancelledError] when the [cancellationToken] has
+  /// been cancelled. Every request path checks this before it is sent.
+  /// (upstream issues #85, #45, #93)
+  void throwIfCancelled() {
+    if (cancellationToken?.isCancelled ?? false) {
+      throw MinioRequestCancelledError(
+        'The request was cancelled via the MinioCancellationToken',
+      );
+    }
+  }
 
   /// Set this value to override region cache. (Optional)
   final String? region;
@@ -353,16 +495,108 @@ class Minio {
   }
 
   /// get a readable stream of the object content.
-  Future<MinioByteStream> getObject(String bucket, String object) {
-    return getPartialObject(bucket, object, null, null);
+  ///
+  /// [onProgress] is invoked as the stream is consumed with the number of
+  /// bytes received so far and the total size of the object when the server
+  /// announced it (upstream issues #4 and #20).
+  ///
+  /// When [parallelism] is greater than one the object is fetched as
+  /// concurrent byte ranges and streamed back in the original order
+  /// (upstream issue #112). [chunkSize] is the size of a range; it defaults
+  /// to a value that splits the object into [parallelism] pieces of at least
+  /// 8 MiB.
+  Future<MinioByteStream> getObject(
+    String bucket,
+    String object, {
+    void Function(int bytesRead, int? totalBytes)? onProgress,
+    int parallelism = 1,
+    int? chunkSize,
+  }) {
+    if (parallelism > 1) {
+      return _getObjectInParallel(
+        bucket,
+        object,
+        parallelism: parallelism,
+        chunkSize: chunkSize,
+        onProgress: onProgress,
+      );
+    }
+
+    return getPartialObject(bucket, object, null, null, onProgress);
+  }
+
+  /// Fetches an object as concurrent byte ranges.
+  ///
+  /// The ranges are requested in parallel and the bytes are streamed back in
+  /// the order of the object, so the result is the same as a sequential
+  /// download (upstream issue #112).
+  Future<MinioByteStream> _getObjectInParallel(
+    String bucket,
+    String object, {
+    required int parallelism,
+    int? chunkSize,
+    void Function(int bytesRead, int? totalBytes)? onProgress,
+  }) async {
+    final stat = await statObject(bucket, object, retrieveAcls: false);
+    final totalBytes = stat.size;
+
+    if (totalBytes == null || totalBytes == 0) {
+      // Without a size there is nothing to split the object into.
+      return getPartialObject(bucket, object, null, null, onProgress);
+    }
+
+    return fetchInParallel(
+      fetch: (offset, length) async {
+        final stream = await getPartialObject(bucket, object, offset, length);
+        final bytes = <int>[];
+        await for (final chunk in stream) {
+          bytes.addAll(chunk);
+        }
+        return Uint8List.fromList(bytes);
+      },
+      totalBytes: totalBytes,
+      chunkSize: chunkSize ?? _defaultChunkSize(totalBytes, parallelism),
+      parallelism: parallelism,
+      onProgress: onProgress,
+    );
+  }
+
+  /// The size of a range of a parallel download.
+  int _defaultChunkSize(int totalBytes, int parallelism) {
+    const minimum = 8 * 1024 * 1024;
+    final perWorker = (totalBytes / parallelism).ceil();
+    return perWorker < minimum ? minimum : perWorker;
+  }
+
+  /// Reports the progress of a download as its bytes arrive.
+  Stream<List<int>> _withDownloadProgress(
+    Stream<List<int>> source,
+    int? totalBytes,
+    void Function(int bytesRead, int? totalBytes)? onProgress,
+  ) {
+    if (onProgress == null) return source;
+
+    var received = 0;
+    return source.map((chunk) {
+      received += chunk.length;
+      onProgress(received, totalBytes);
+      return chunk;
+    });
   }
 
   /// get a readable stream of the partial object content.
+  ///
+  /// [onProgress] is invoked as the stream is consumed with the number of
+  /// bytes received so far and the total size of the requested range when
+  /// the server announced it (upstream issues #4 and #20). It is optional
+  /// positional because the method already has optional positional
+  /// parameters.
   Future<MinioByteStream> getPartialObject(
     String bucket,
     String object, [
     int? offset,
     int? length,
+    void Function(int bytesRead, int? totalBytes)? onProgress,
   ]) async {
     assert(offset == null || offset >= 0);
     assert(length == null || length > 0);
@@ -395,9 +629,10 @@ class Minio {
 
     await validateStreamed(resp, expect: expectedStatus);
 
+    final contentLength = resp.contentLength;
     return MinioByteStream.fromStream(
-      stream: resp.stream,
-      contentLength: resp.contentLength,
+      stream: _withDownloadProgress(resp.stream, contentLength, onProgress),
+      contentLength: contentLength,
     );
   }
 
@@ -451,7 +686,10 @@ class Minio {
         int? size;
         try {
           final parts = listParts(bucket, upload.key!, upload.uploadId!);
-          size = await parts.fold<int>(0, (acc, item) => acc + (item.size ?? 0));
+          size = await parts.fold<int>(
+            0,
+            (acc, item) => acc + (item.size ?? 0),
+          );
         } on MinioS3Error {
           // The upload cannot be inspected any more - it expired, it was
           // completed elsewhere, or the server still lists an upload whose
@@ -485,10 +723,7 @@ class Minio {
     // matched what the server signed, so every call failed with
     // "The request signature we calculated does not match the signature you
     // provided".
-    var queries = <String, dynamic>{
-      'prefix': prefix,
-      'delimiter': delimiter,
-    };
+    var queries = <String, dynamic>{'prefix': prefix, 'delimiter': delimiter};
 
     if (keyMarker != null) {
       queries['key-marker'] = keyMarker;
@@ -536,8 +771,9 @@ class Minio {
       region: region ?? 'us-east-1',
     );
     validate(resp);
-    final bucketsNode =
-        xml.XmlDocument.parse(resp.body).findAllElements('Buckets').first;
+    final bucketsNode = xml.XmlDocument.parse(
+      resp.body,
+    ).findAllElements('Buckets').first;
     // The children of <Buckets> are not guaranteed to be elements: a server
     // that indents its XML puts whitespace text nodes between them, and
     // casting those to XmlElement threw (upstream issue #49).
@@ -592,10 +828,7 @@ class Minio {
       objects.addAll(chunk.objects);
       prefixes.addAll(chunk.prefixes);
     }
-    return ListObjectsResult(
-      objects: objects,
-      prefixes: prefixes,
-    );
+    return ListObjectsResult(objects: objects, prefixes: prefixes);
   }
 
   /// list a batch of objects
@@ -696,10 +929,7 @@ class Minio {
       objects.addAll(chunk.objects);
       prefixes.addAll(chunk.prefixes);
     }
-    return ListObjectsResult(
-      objects: objects,
-      prefixes: prefixes,
-    );
+    return ListObjectsResult(objects: objects, prefixes: prefixes);
   }
 
   /// listObjectsV2Query - (List Objects V2) - List some or all (up to 1000) of the objects in a bucket.
@@ -742,8 +972,10 @@ class Minio {
 
     final node = xml.XmlDocument.parse(resp.body);
     final isTruncated = getNodeProp(node.rootElement, 'IsTruncated')!.text;
-    final nextContinuationToken =
-        getNodeProp(node.rootElement, 'NextContinuationToken')?.text;
+    final nextContinuationToken = getNodeProp(
+      node.rootElement,
+      'NextContinuationToken',
+    )?.text;
     final objs = node.findAllElements('Contents').map((c) => Object.fromXml(c));
     final prefixes = node
         .findAllElements('CommonPrefixes')
@@ -757,11 +989,7 @@ class Minio {
   }
 
   /// Get part-info of all parts of an incomplete upload specified by uploadId.
-  Stream<Part> listParts(
-    String bucket,
-    String object,
-    String uploadId,
-  ) async* {
+  Stream<Part> listParts(String bucket, String object, String uploadId) async* {
     MinioInvalidBucketNameError.check(bucket);
     MinioInvalidObjectNameError.check(object);
 
@@ -833,12 +1061,17 @@ class Minio {
   /// - [expires]: expiry in seconds (optional, default 7 days)
   /// - [respHeaders]: response headers to override (optional)
   /// - [requestDate]: A date object, the url will be issued at (optional)
+  /// - [host], [port], [useSSL]: the public address of the server, when it
+  ///   differs from the one the client talks to (optional)
   Future<String> presignedGetObject(
     String bucket,
     String object, {
     int? expires,
     Map<String, String>? respHeaders,
     DateTime? requestDate,
+    String? host,
+    int? port,
+    bool? useSSL,
   }) {
     MinioInvalidBucketNameError.check(bucket);
     MinioInvalidObjectNameError.check(object);
@@ -850,13 +1083,25 @@ class Minio {
       expires: expires,
       reqParams: respHeaders,
       requestDate: requestDate,
+      host: host,
+      port: port,
+      useSSL: useSSL,
     );
   }
 
   /// presignedPostPolicy can be used in situations where we want more control on the upload than what
   /// presignedPutObject() provides. i.e Using presignedPostPolicy we will be able to put policy restrictions
   /// on the object's `name` `bucket` `expiry` `Content-Type`
-  Future<PostPolicyResult> presignedPostPolicy(PostPolicy postPolicy) async {
+  ///
+  /// - [host], [port], [useSSL]: the public address of the server, when it
+  ///   differs from the one the client talks to (optional). The override is
+  ///   used both in the url and in the signature (upstream issue #101).
+  Future<PostPolicyResult> presignedPostPolicy(
+    PostPolicy postPolicy, {
+    String? host,
+    int? port,
+    bool? useSSL,
+  }) async {
     if (_client.anonymous) {
       throw MinioAnonymousRequestError(
         'Presigned POST policy cannot be generated for anonymous requests',
@@ -878,27 +1123,39 @@ class Minio {
     postPolicy.policy['conditions'].add(['eq', r'$x-amz-date', dateStr]);
     postPolicy.formData['x-amz-date'] = dateStr;
 
-    postPolicy.policy['conditions']
-        .add(['eq', r'$x-amz-algorithm', 'AWS4-HMAC-SHA256']);
+    postPolicy.policy['conditions'].add([
+      'eq',
+      r'$x-amz-algorithm',
+      'AWS4-HMAC-SHA256',
+    ]);
     postPolicy.formData['x-amz-algorithm'] = 'AWS4-HMAC-SHA256';
 
-    postPolicy.policy['conditions'].add(
-      ['eq', r'$x-amz-credential', '$accessKey/${getScope(region, date)}'],
-    );
+    postPolicy.policy['conditions'].add([
+      'eq',
+      r'$x-amz-credential',
+      '$accessKey/${getScope(region, date)}',
+    ]);
 
     postPolicy.formData['x-amz-credential'] =
         '$accessKey/${getScope(region, date)}';
 
     if (sessionToken != null) {
-      postPolicy.policy['conditions']
-          .add(['eq', r'$x-amz-security-token', sessionToken]);
+      postPolicy.policy['conditions'].add([
+        'eq',
+        r'$x-amz-security-token',
+        sessionToken,
+      ]);
     }
 
     final policyBase64 = jsonBase64(postPolicy.policy);
     postPolicy.formData['policy'] = policyBase64;
 
-    final signature =
-        postPresignSignatureV4(region, date, secretKey, policyBase64);
+    final signature = postPresignSignatureV4(
+      region,
+      date,
+      secretKey,
+      policyBase64,
+    );
 
     postPolicy.formData['x-amz-signature'] = signature;
     final url = _client
@@ -911,9 +1168,15 @@ class Minio {
           null,
           null,
           null,
+          host: host,
+          port: port,
+          useSSL: useSSL,
         )
         .url;
-    var portStr = (port == 80 || port == 443) ? '' : ':$port';
+    final effectivePort = port ?? this.port;
+    var portStr = (effectivePort == 80 || effectivePort == 443)
+        ? ''
+        : ':$effectivePort';
     var urlStr = '${url.scheme}://${url.host}$portStr${url.path}';
     return PostPolicyResult(postURL: urlStr, formData: postPolicy.formData);
   }
@@ -924,14 +1187,47 @@ class Minio {
   /// - [bucketName]: name of the bucket
   /// - [objectName]: name of the object
   /// - [expires]: expiry in seconds (optional, default 7 days)
+  /// - [host], [port], [useSSL]: the public address of the server, when it
+  ///   differs from the one the client talks to (optional)
   Future<String> presignedPutObject(
     String bucket,
     String object, {
     int? expires,
+    String? host,
+    int? port,
+    bool? useSSL,
   }) {
     MinioInvalidBucketNameError.check(bucket);
     MinioInvalidObjectNameError.check(object);
-    return presignedUrl('PUT', bucket, object, expires: expires);
+    return presignedUrl(
+      'PUT',
+      bucket,
+      object,
+      expires: expires,
+      host: host,
+      port: port,
+      useSSL: useSSL,
+    );
+  }
+
+  /// The URL of an object.
+  ///
+  /// The URL is not signed: it points at the object and can be used by
+  /// everyone who may read the bucket. Use [presignedGetObject] for a URL
+  /// that carries a signature (upstream issue #12).
+  Future<String> objectUrl(String bucket, String object) async {
+    MinioInvalidBucketNameError.check(bucket);
+    MinioInvalidObjectNameError.check(object);
+
+    final region = await getBucketRegion(bucket);
+    final url = _client.getRequestUrl(
+      bucket,
+      object,
+      null,
+      null,
+      region: region,
+    );
+    return url.toString();
   }
 
   /// Generate a generic presigned URL which can be
@@ -943,6 +1239,10 @@ class Minio {
   /// - [expires]: expiry in seconds (optional, default 7 days)
   /// - [reqParams]: request parameters (optional)
   /// - [requestDate]: A date object, the url will be issued at (optional)
+  /// - [host], [port], [useSSL]: the public address of the server, when it
+  ///   differs from the one the client talks to (optional). The override is
+  ///   used both in the url and in the signature, so the two can never
+  ///   disagree (upstream issue #101).
   Future<String> presignedUrl(
     String method,
     String bucket,
@@ -951,6 +1251,9 @@ class Minio {
     String? resource,
     Map<String, String>? reqParams,
     DateTime? requestDate,
+    String? host,
+    int? port,
+    bool? useSSL,
   }) async {
     MinioInvalidBucketNameError.check(bucket);
     MinioInvalidObjectNameError.check(object);
@@ -973,11 +1276,19 @@ class Minio {
       reqParams,
       {},
       null,
+      host: host,
+      port: port,
+      useSSL: useSSL,
     );
     return presignSignatureV4(this, request, region, requestDate, expires);
   }
 
   /// Uploads the object. Returns the ETag of the uploaded object.
+  ///
+  /// [maxParallelUploads] is how many parts of a multipart upload may be in
+  /// flight at the same time. The default of 1 uploads the parts one after
+  /// the other, like the upstream client does; a higher value is faster on a
+  /// high latency link (upstream issue #98).
   Future<String> putObject(
     String bucket,
     String object,
@@ -986,6 +1297,7 @@ class Minio {
     int? chunkSize,
     Map<String, String>? metadata,
     void Function(int)? onProgress,
+    int maxParallelUploads = 1,
   }) async {
     MinioInvalidBucketNameError.check(bucket);
     MinioInvalidObjectNameError.check(object);
@@ -996,6 +1308,12 @@ class Minio {
 
     if (chunkSize != null && chunkSize < 5 * 1024 * 1024) {
       throw MinioInvalidArgumentError('Minimum chunk size is 5MB');
+    }
+
+    if (maxParallelUploads < 1) {
+      throw MinioInvalidArgumentError(
+        'invalid maxParallelUploads value: $maxParallelUploads',
+      );
     }
 
     metadata = prependXAMZMeta(metadata ?? <String, String>{});
@@ -1010,10 +1328,53 @@ class Minio {
       partSize,
       metadata,
       onProgress,
+      maxParallelUploads: maxParallelUploads,
     );
     final chunker = MinChunkSize(partSize);
     final etag = await data.transform(chunker).pipe(uploader);
     return etag.toString();
+  }
+
+  /// Uploads a single part of a multipart upload.
+  ///
+  /// The upload must have been started with [initiateNewMultipartUpload]; the
+  /// parts are finished with [completeMultipartUpload]. This is the API an
+  /// application needs when it drives the multipart upload itself, for
+  /// example to upload the parts in parallel (upstream issue #102).
+  ///
+  /// Returns the ETag of the part.
+  Future<String> uploadPart(
+    String bucket,
+    String object,
+    String uploadId,
+    int partNumber,
+    List<int> data,
+  ) async {
+    MinioInvalidBucketNameError.check(bucket);
+    MinioInvalidObjectNameError.check(object);
+
+    if (partNumber < 1 || partNumber > 10000) {
+      throw MinioInvalidArgumentError('invalid partNumber value: $partNumber');
+    }
+
+    final headers = <String, String>{'Content-Length': '${data.length}'};
+    if (!_client.enableSHA256) {
+      headers['Content-MD5'] = base64.encode(md5.convert(data).bytes);
+    }
+
+    final resp = await _client.request(
+      method: 'PUT',
+      bucket: bucket,
+      object: object,
+      headers: headers,
+      queries: {'partNumber': '$partNumber', 'uploadId': uploadId},
+      payload: data,
+    );
+
+    validate(resp);
+
+    final etag = resp.headers['etag'];
+    return etag == null ? '' : trimDoubleQuote(etag);
   }
 
   /// Remove all bucket notification
@@ -1028,10 +1389,7 @@ class Minio {
   Future<void> removeBucket(String bucket) async {
     MinioInvalidBucketNameError.check(bucket);
 
-    final resp = await _client.request(
-      method: 'DELETE',
-      bucket: bucket,
-    );
+    final resp = await _client.request(method: 'DELETE', bucket: bucket);
 
     validate(resp, expect: 204);
     _regionMap.remove(bucket);
@@ -1091,6 +1449,30 @@ class Minio {
         payload: payload,
       );
     }
+  }
+
+  /// Removes every object whose name starts with [prefix].
+  ///
+  /// This is how a "folder" is deleted on a server that has no folders: the
+  /// objects under the prefix are removed (upstream issue #99).
+  Future<void> removeObjectsByPrefix(String bucket, String prefix) async {
+    MinioInvalidBucketNameError.check(bucket);
+
+    final objects = <String>[];
+    await for (final chunk in listObjects(
+      bucket,
+      prefix: prefix,
+      recursive: true,
+    )) {
+      for (final object in chunk.objects) {
+        final key = object.key;
+        if (key != null) objects.add(key);
+      }
+    }
+
+    if (objects.isEmpty) return;
+
+    await removeObjects(bucket, objects);
   }
 
   // Remove all the notification configurations in the S3 provider
@@ -1158,9 +1540,9 @@ class Minio {
     validate(resp, expect: 200);
 
     return AccessControlPolicy.fromXml(
-      xml.XmlDocument.parse(resp.body)
-          .findElements('AccessControlPolicy')
-          .first,
+      xml.XmlDocument.parse(
+        resp.body,
+      ).findElements('AccessControlPolicy').first,
     );
   }
 
@@ -1198,8 +1580,9 @@ class Minio {
       etag: etag,
       size: contentLength == null ? null : int.tryParse(contentLength),
       metaData: extractMetadata(resp.headers),
-      lastModified:
-          lastModified == null ? null : parseRfc7231Time(lastModified),
+      lastModified: lastModified == null
+          ? null
+          : parseRfc7231Time(lastModified),
       acl: retrieveAcls ? await getObjectACL(bucket, object) : null,
     );
   }
