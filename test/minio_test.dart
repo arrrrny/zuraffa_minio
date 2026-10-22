@@ -345,7 +345,7 @@ void testGetObject() {
     });
 
     test('succeeds with utf8 object name', () async {
-      final stream = await minio.getObject(bucketName, object);
+      final stream = await minio.getObject(bucketName, objectUtf8);
       final buffer = BytesBuilder();
       await stream.forEach((data) => buffer.add(data));
       expect(stream.contentLength, equals(objectData.length));

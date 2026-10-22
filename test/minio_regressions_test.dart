@@ -132,13 +132,17 @@ Future<void> main() async {
     test(
       '#43 an Amazon endpoint without an explicit region does not throw',
       () async {
-        final minio = _mockClient((request) async {
-          return http.Response(
-            '<?xml version="1.0"?><ListAllMyBucketsResult><Buckets/>'
-            '</ListAllMyBucketsResult>',
-            200,
-          );
-        }, endPoint: 's3.amazonaws.com');
+        final minio = _mockClient(
+          (request) async {
+            return http.Response(
+              '<?xml version="1.0"?><ListAllMyBucketsResult><Buckets/>'
+              '</ListAllMyBucketsResult>',
+              200,
+            );
+          },
+          endPoint: 's3.amazonaws.com',
+          region: null,
+        );
 
         // Upstream read `minio.region!` while building the request URL and
         // threw "Unexpected null value" for every request against an Amazon

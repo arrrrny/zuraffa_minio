@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:test/test.dart' as pkg_test;
 import 'package:test/test.dart' hide setUpAll, tearDownAll, test;
 import 'package:zuraffa_minio/io.dart';
 import 'package:zuraffa_minio/minio.dart';
@@ -13,7 +14,10 @@ Future<void> main() async {
   group(
     'issue #101 — the presigned calls accept a host, a port and a scheme',
     () {
-      test('the url carries the override', () async {
+      // The four tests of this group build a url and sign it. They never open
+      // a socket, so they are registered with the test of the package and not
+      // with the one of the helpers, which is skipped when no server answers.
+      pkg_test.test('the url carries the override', () async {
         final minio = getMinioClient();
 
         final url = await minio.presignedGetObject(
@@ -31,26 +35,39 @@ Future<void> main() async {
         expect(url, contains('X-Amz-Signature='));
       });
 
-      test('without an override the url of the client is used', () async {
+      pkg_test.test(
+        'without an override the url of the client is used',
+        () async {
+          final minio = getMinioClient();
+
+          final url = await minio.presignedGetObject('bucket', 'object');
+
+          expect(
+            url,
+            startsWith(
+              'http://${MinioTestServer.endpoint}:${MinioTestServer.port}',
+            ),
+          );
+        },
+      );
+
+      pkg_test.test('the override reaches the signature', () async {
         final minio = getMinioClient();
 
-        final url = await minio.presignedGetObject('bucket', 'object');
+        // Both urls are signed at the same moment. Without a fixed date a
+        // tick of the clock between the two calls would make the signatures
+        // differ even if the override never reached the signature at all.
+        final requestDate = DateTime.now().toUtc();
 
-        expect(
-          url,
-          startsWith(
-            'http://${MinioTestServer.endpoint}:${MinioTestServer.port}',
-          ),
+        final plain = await minio.presignedGetObject(
+          'bucket',
+          'object',
+          requestDate: requestDate,
         );
-      });
-
-      test('the override reaches the signature', () async {
-        final minio = getMinioClient();
-
-        final plain = await minio.presignedGetObject('bucket', 'object');
         final overridden = await minio.presignedGetObject(
           'bucket',
           'object',
+          requestDate: requestDate,
           host: 'public.example.com',
           port: 8443,
           useSSL: true,
@@ -63,7 +80,7 @@ Future<void> main() async {
         expect(signatureOf(plain), isNot(signatureOf(overridden)));
       });
 
-      test('the post policy uses the override too', () async {
+      pkg_test.test('the post policy uses the override too', () async {
         final minio = getMinioClient();
 
         final policy = PostPolicy();
@@ -84,7 +101,7 @@ Future<void> main() async {
   );
 
   group('issue #94 — the credentials come from a provider', () {
-    test('the provider is consulted and the getters follow', () async {
+    pkg_test.test('the provider is consulted and the getters follow', () async {
       var calls = 0;
       final minio = Minio(
         endPoint: MinioTestServer.endpoint,
@@ -113,27 +130,33 @@ Future<void> main() async {
       expect(minio.sessionToken, 'token1');
     });
 
-    test('the credentials are cached until they are too old', () async {
-      var calls = 0;
-      final minio = Minio(
-        endPoint: MinioTestServer.endpoint,
-        port: MinioTestServer.port,
-        useSSL: MinioTestServer.useSSL,
-        accessKey: 'static',
-        secretKey: 'static',
-        region: MinioTestServer.region,
-        credentialsTtl: const Duration(hours: 1),
-        credentialsProvider: () async {
-          calls++;
-          return MinioCredentials(accessKey: 'key$calls', secretKey: 'secret');
-        },
-      );
+    pkg_test.test(
+      'the credentials are cached until they are too old',
+      () async {
+        var calls = 0;
+        final minio = Minio(
+          endPoint: MinioTestServer.endpoint,
+          port: MinioTestServer.port,
+          useSSL: MinioTestServer.useSSL,
+          accessKey: 'static',
+          secretKey: 'static',
+          region: MinioTestServer.region,
+          credentialsTtl: const Duration(hours: 1),
+          credentialsProvider: () async {
+            calls++;
+            return MinioCredentials(
+              accessKey: 'key$calls',
+              secretKey: 'secret',
+            );
+          },
+        );
 
-      await minio.resolveCredentials();
-      await minio.resolveCredentials();
+        await minio.resolveCredentials();
+        await minio.resolveCredentials();
 
-      expect(calls, 1);
-    });
+        expect(calls, 1);
+      },
+    );
 
     test('the requests of a client with a provider are signed', () async {
       var calls = 0;
@@ -152,32 +175,35 @@ Future<void> main() async {
       );
 
       // The server checks the signature, so a request that comes back proves
-      // the client signed it with the resolved credentials.
-      final buckets = await minio.listBuckets();
-
-      expect(buckets, isNotEmpty);
+      // the client signed it with the resolved credentials. The number of
+      // buckets the server holds is its own state and not a part of the
+      // contract, so it is not asserted here.
+      await expectLater(minio.listBuckets(), completes);
       expect(calls, greaterThanOrEqualTo(1));
     });
 
-    test('a presigned url is signed with the resolved credentials', () async {
-      final minio = Minio(
-        endPoint: MinioTestServer.endpoint,
-        port: MinioTestServer.port,
-        useSSL: MinioTestServer.useSSL,
-        region: MinioTestServer.region,
-        credentialsProvider: () async =>
-            MinioCredentials(accessKey: 'AKIAPRESIGNED', secretKey: 'secret'),
-      );
+    pkg_test.test(
+      'a presigned url is signed with the resolved credentials',
+      () async {
+        final minio = Minio(
+          endPoint: MinioTestServer.endpoint,
+          port: MinioTestServer.port,
+          useSSL: MinioTestServer.useSSL,
+          region: MinioTestServer.region,
+          credentialsProvider: () async =>
+              MinioCredentials(accessKey: 'AKIAPRESIGNED', secretKey: 'secret'),
+        );
 
-      final url = await minio.presignedGetObject('bucket', 'object');
+        final url = await minio.presignedGetObject('bucket', 'object');
 
-      // The access key is part of the credential scope of the signature.
-      expect(url, contains('AKIAPRESIGNED'));
-    });
+        // The access key is part of the credential scope of the signature.
+        expect(url, contains('AKIAPRESIGNED'));
+      },
+    );
   });
 
   group('issue #12 — the url of an object', () {
-    test('the url points at the object', () async {
+    pkg_test.test('the url points at the object', () async {
       final minio = getMinioClient();
 
       final url = await minio.objectUrl('bucket', 'some/object.txt');
@@ -191,7 +217,8 @@ Future<void> main() async {
   });
 
   group('issue #85, #45 and #93 — the requests can be cancelled', () {
-    test('a cancelled token stops the requests', () async {
+    // The request is stopped before it is sent, so no socket is opened.
+    pkg_test.test('a cancelled token stops the requests', () async {
       final token = MinioCancellationToken();
       final minio = Minio(
         endPoint: MinioTestServer.endpoint,
@@ -216,7 +243,7 @@ Future<void> main() async {
   });
 
   group('issue #80 — a client that accepts an invalid certificate', () {
-    test('it returns a client', () {
+    pkg_test.test('it returns a client', () {
       final client = createTlsHttpClient(allowInvalidCertificates: true);
       expect(client, isA<http.Client>());
       client.close();

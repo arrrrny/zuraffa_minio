@@ -37,6 +37,16 @@ Nothing else in your code has to change: the class is still `Minio`, the
 methods keep their names and their parameters, and the models keep their
 fields.
 
+The models live in their own library, exactly as they did upstream:
+
+```dart
+import 'package:zuraffa_minio/models.dart';
+```
+
+They are deliberately not exported from the default library: one of them is
+called `Object`, and an export would shadow the `Object` of `dart:core` in
+every file that imports the package.
+
 What the fork adds on top:
 
 | | |

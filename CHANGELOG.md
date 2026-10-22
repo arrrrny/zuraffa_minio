@@ -1,3 +1,33 @@
+# 0.2.4
+
+The findings of the review of the pull request of the fork.
+
+- a parallel download that lost a range hands the error to the consumer
+  instead of ending the stream normally. A truncated download can no longer
+  look like a complete one.
+- the planner of the byte ranges rejects a chunk size of zero, which made it
+  run forever.
+- `uploadPart` accepts a plain list of bytes again; only a `Uint8List` could
+  be sent as the body of a request before.
+- `close` only closes a client the instance created itself. A client that was
+  passed to the constructor belongs to the caller.
+- the Amazon endpoints keep the path style of the upstream package as their
+  default, so a migration stays an import swap. The virtual host style is one
+  setting away: `pathStyle: false`.
+- the notification configuration reads and writes the wrapper elements the
+  server uses: the configurations are a list, and the events are the children
+  of the `Events` element. The upstream package parsed the wrapper element
+  itself, so every field of a configuration came back empty.
+- the default library no longer exports the models. One of them is called
+  `Object`, and the export shadowed the `Object` of `dart:core` in every
+  file that imported the package. The models live in
+  `package:zuraffa_minio/models.dart`, exactly as they did upstream.
+- the generator of the models writes code that compiles. The committed file
+  carries the corrections of the notification models by hand; the generator
+  says so.
+
+---
+
 # 0.2.3
 
 - the counting semaphore of the parallel download is covered by a test now.
