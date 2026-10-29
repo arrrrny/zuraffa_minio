@@ -1,3 +1,9 @@
+## 7.3.1 - 2026-10-29
+
+- The declared `xml` constraint raises from `^7.0.0` to `^7.1.0` — the
+  fleet's standard xml line. No code changes; the workspace override already
+  pinned `xml: 7.1.0`.
+
 ## 7.3.0 - 2026-10-28
 
 - Mono-version fleet alignment: the whole zuraffa family ships at 7.3.0 together with the core.

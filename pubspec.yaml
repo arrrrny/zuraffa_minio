@@ -1,6 +1,6 @@
 name: zuraffa_minio
 description: A maintained fork of the minio package - a pure Dart client for MinIO and Amazon S3 compatible object storage.
-version: 7.3.0
+version: 7.3.1
 repository: https://github.com/arrrrny/zuraffa_minio
 issue_tracker: https://github.com/arrrrny/zuraffa_minio/issues
 homepage: https://github.com/arrrrny/zuraffa_minio
@@ -19,7 +19,10 @@ dependencies:
   path: ^1.9.1
   # xml 7 is the reason this fork exists as a drop-in replacement: the
   # abandoned upstream pinned xml 6.4.2, which is past its support window.
-  xml: ^7.0.0
+  # 7.3.1 raises the floor to ^7.1.0 — the fleet's standard xml line
+  # (2026-10-29 policy); the whole 7.x range is what this fork is tested
+  # against, and no fleet consumer resolves xml below 7.1.0 anymore.
+  xml: ^7.1.0
 
 dev_dependencies:
   html: ^0.15.4
